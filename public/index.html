@@ -1313,6 +1313,82 @@
       setDataStatus(`发布成功：${payload.rows} 条数据 / Publicado com sucesso.`);
     }
 
+    function normalizeHeader(value) {
+      return String(value || "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\s+/g, " ");
+    }
+
+    function headerMatches(value, aliases) {
+      const normalized = normalizeHeader(value);
+      return aliases.some((alias) => normalizeHeader(alias) === normalized);
+    }
+
+    function scoreHeaderRow(row) {
+      const values = row.map(normalizeHeader);
+      const has = (aliases) => values.some((value) => aliases.some((alias) => normalizeHeader(alias) === value));
+      return [
+        fieldMap.awb,
+        fieldMap.backlog,
+        fieldMap.noTracking,
+        fieldMap.base,
+        fieldMap.owner,
+        fieldMap.value,
+        fieldMap.region
+      ].reduce((score, aliases) => score + (has(aliases) ? 1 : 0), 0);
+    }
+
+    function rowsFromSheet(sheetName, worksheet) {
+      const matrix = XLSX.utils.sheet_to_json(worksheet, {header: 1, defval: "", raw: false});
+      let bestIndex = -1;
+      let bestScore = 0;
+
+      matrix.forEach((row, index) => {
+        const score = scoreHeaderRow(row);
+        if (score > bestScore) {
+          bestScore = score;
+          bestIndex = index;
+        }
+      });
+
+      if (bestIndex < 0 || bestScore < 3) {
+        return {sheetName, rows: [], score: bestScore};
+      }
+
+      const headers = matrix[bestIndex].map((header, index) => {
+        const text = String(header || "").trim();
+        return text || `Column ${index + 1}`;
+      });
+
+      const rows = matrix.slice(bestIndex + 1)
+        .filter((row) => row.some((cell) => String(cell || "").trim()))
+        .map((row) => {
+          const record = {};
+          headers.forEach((header, index) => {
+            record[header] = row[index] ?? "";
+          });
+          return record;
+        });
+
+      return {sheetName, rows, score: bestScore, headerRow: bestIndex + 1};
+    }
+
+    function extractWorkbookRows(workbook) {
+      const candidates = workbook.SheetNames
+        .map((sheetName) => rowsFromSheet(sheetName, workbook.Sheets[sheetName]))
+        .sort((a, b) => (b.rows.length ? b.score : 0) - (a.rows.length ? a.score : 0));
+
+      const candidate = candidates.find((item) => item.rows.length && item.score >= 3);
+      if (!candidate) {
+        throw new Error(`没有找到有效表头。已检查 sheet：${workbook.SheetNames.join(", ")}`);
+      }
+
+      return candidate;
+    }
+
     async function handleFile(file) {
       showError("");
       if (!window.XLSX) {
@@ -1323,19 +1399,17 @@
       try {
         const buffer = await file.arrayBuffer();
         const workbook = XLSX.read(buffer, {type: "array", cellDates: true});
-        const firstSheet = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheet];
-        const rawRows = XLSX.utils.sheet_to_json(worksheet, {defval: ""});
+        const detected = extractWorkbookRows(workbook);
 
-        state.rows = rawRows
+        state.rows = detected.rows
           .map(normalizeRow)
           .filter((row) => row.awb && row.backlog >= 8);
 
         if (!state.rows.length) {
-          showError("没有找到 Backlog (D) ≥ 8 的数据，或字段名没有匹配成功。请检查 Excel 表头。");
+          showError(`已识别 sheet「${detected.sheetName}」第 ${detected.headerRow} 行为表头，但没有找到 Backlog (D) ≥ 8 的数据。请检查 Backlog 列是否是数字。`);
           setDataStatus("上传完成，但没有识别到超期数据 / Arquivo carregado, mas sem dados acima de SLA+8 reconhecidos.");
         } else {
-          setDataStatus(`已加载 ${state.rows.length} 条超期数据 / ${state.rows.length} linhas acima de SLA+8 carregadas.`);
+          setDataStatus(`已从 sheet「${detected.sheetName}」加载 ${state.rows.length} 条超期数据 / ${state.rows.length} linhas carregadas.`);
         }
 
         refreshFilters();
