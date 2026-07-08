@@ -110,6 +110,22 @@ async function handlePublish(req, res) {
   }
 }
 
+async function handleAuth(req, res) {
+  try {
+    const rawBody = await readBody(req);
+    const payload = JSON.parse(rawBody || "{}");
+
+    if (payload.password !== ADMIN_PASSWORD) {
+      sendJson(res, 401, {error: "Senha incorreta / 密码不正确"});
+      return;
+    }
+
+    sendJson(res, 200, {ok: true});
+  } catch (error) {
+    sendJson(res, 400, {error: error.message});
+  }
+}
+
 function handleData(_req, res) {
   if (!fs.existsSync(DATA_FILE)) {
     sendJson(res, 200, {fileName: null, publishedAt: null, rows: []});
@@ -132,6 +148,11 @@ const server = http.createServer((req, res) => {
 
   if (req.method === "POST" && req.url.startsWith("/api/publish")) {
     handlePublish(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && req.url.startsWith("/api/auth")) {
+    handleAuth(req, res);
     return;
   }
 
