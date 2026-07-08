@@ -80,7 +80,7 @@
 
     .toolbar {
       display: grid;
-      grid-template-columns: repeat(4, minmax(170px, 1fr));
+      grid-template-columns: repeat(5, minmax(150px, 1fr));
       gap: 12px;
       margin-bottom: 16px;
       align-items: end;
@@ -280,6 +280,7 @@
     .metric {
       padding: 18px;
       transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease;
+      cursor: pointer;
     }
 
     .metric:hover {
@@ -319,10 +320,26 @@
       color: var(--blue);
     }
 
+    .metric.active {
+      background: rgba(232, 242, 255, 0.96);
+      border-color: rgba(0, 113, 227, 0.72);
+      box-shadow: 0 18px 42px rgba(0, 113, 227, 0.18);
+    }
+
+    .metric.active .metric-title,
+    .metric.active .metric-note,
+    .metric.active .metric-value {
+      color: var(--blue);
+    }
+
     .grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(280px, 1fr));
       gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .trend-panel {
       margin-bottom: 18px;
     }
 
@@ -337,6 +354,24 @@
       justify-content: space-between;
       gap: 12px;
       margin-bottom: 12px;
+    }
+
+    .panel-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .compact-select {
+      width: auto;
+      min-width: 136px;
+      min-height: 32px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      background: rgba(255, 255, 255, 0.74);
     }
 
     .panel h2 {
@@ -606,6 +641,20 @@
   <main>
     <section class="toolbar" aria-label="筛选器">
       <div class="control">
+        <label for="dateMenuButton">数据日期 / Data do relatório</label>
+        <div id="dateMulti" class="multi-filter">
+          <button id="dateMenuButton" class="multi-button" type="button">最新 / Mais recente</button>
+          <div class="multi-popover">
+            <input id="dateSearch" class="multi-search" type="search" placeholder="搜索日期 / Buscar data">
+            <div id="dateOptions" class="multi-options"></div>
+            <div class="multi-footer">
+              <button class="export-small" data-clear-filter="date" type="button">Mais recente</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="control">
         <label for="regionMenuButton">区域 / Região</label>
         <div id="regionMulti" class="multi-filter">
           <button id="regionMenuButton" class="multi-button" type="button">全部 / Todas</button>
@@ -662,36 +711,58 @@
     <div id="emptyState" class="empty">暂无数据。请由负责人进入后台上传 Excel。 / Sem dados. O responsável deve carregar o Excel no Admin.</div>
 
     <section class="metrics" aria-label="核心指标">
-      <div class="metric">
+      <div class="metric active" data-trend-metric="total">
         <div class="metric-title">超期总单量 / Total Acima de SLA+8</div>
         <div id="totalSla" class="metric-value">0</div>
         <div class="metric-note">Backlog ≥ 8</div>
       </div>
-      <div class="metric">
+      <div class="metric" data-trend-metric="sla8">
         <div class="metric-title">SLA+8 / Total Acima de SLA+8</div>
         <div id="sla8Count" class="metric-value">0</div>
         <div class="metric-note">Backlog = 8</div>
       </div>
-      <div class="metric">
+      <div class="metric" data-trend-metric="sla9">
         <div class="metric-title">SLA+9 / Total Acima de SLA+9</div>
         <div id="sla9Count" class="metric-value">0</div>
         <div class="metric-note">Backlog = 9</div>
       </div>
-      <div class="metric">
+      <div class="metric" data-trend-metric="sla10">
         <div class="metric-title">SLA+10 / Total Acima de SLA+10</div>
         <div id="sla10Count" class="metric-value">0</div>
         <div class="metric-note">Backlog ≥ 10</div>
       </div>
-      <div class="metric">
+      <div class="metric" data-trend-metric="valorTotal">
         <div class="metric-title">总金额 / Valor Total</div>
         <div id="totalValue" class="metric-value">R$ 0</div>
         <div class="metric-note">当前筛选结果</div>
       </div>
-      <div class="metric">
+      <div class="metric" data-trend-metric="maxNoTracking">
         <div class="metric-title">最大 No Tracking / Maior No Tracking</div>
         <div id="maxNoTracking" class="metric-value">0</div>
         <div class="metric-note">天 / dias</div>
       </div>
+    </section>
+
+    <section id="kpiTrendPanel" class="panel trend-panel">
+      <div class="panel-head">
+        <h2 id="trendTitle">超期总单量趋势 / Tendência Total Acima de SLA+8</h2>
+        <div class="panel-actions">
+          <select id="trendRange" class="compact-select" aria-label="趋势范围">
+            <option value="all">全部历史 / Todo histórico</option>
+            <option value="selected">所选日期 / Datas selecionadas</option>
+            <option value="7">最近 7 天 / Últimos 7 dias</option>
+            <option value="30">最近 30 天 / Últimos 30 dias</option>
+            <option value="90">最近 90 天 / Últimos 90 dias</option>
+          </select>
+          <select id="trendGranularity" class="compact-select" aria-label="趋势维度">
+            <option value="day">按日 / Diário</option>
+            <option value="week">按周 / Semanal</option>
+            <option value="month">按月 / Mensal</option>
+          </select>
+          <button class="export-small" data-export="trend" type="button">Exportar CSV</button>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
     </section>
 
     <section class="grid" aria-label="图表">
@@ -722,13 +793,6 @@
           <button class="export-small" data-export="ownerValue" type="button">Exportar CSV</button>
         </div>
         <div class="chart-wrap"><canvas id="valueByOwnerChart"></canvas></div>
-      </div>
-      <div class="panel panel-wide">
-        <div class="panel-head">
-          <h2>每日趋势 / Tendência diária</h2>
-          <button class="export-small" data-export="trend" type="button">Exportar CSV</button>
-        </div>
-        <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
       </div>
     </section>
 
@@ -810,8 +874,13 @@
     const state = {
       rows: [],
       filtered: [],
+      snapshots: [],
       history: [],
+      activeTrendMetric: "total",
+      trendRange: "all",
+      trendGranularity: "day",
       charts: {},
+      selectedDates: new Set(),
       selectedRegions: new Set(),
       selectedBases: new Set(),
       selectedOwners: new Set()
@@ -820,19 +889,25 @@
     const els = {
       fileInput: document.getElementById("fileInput"),
       reportDate: document.getElementById("reportDate"),
+      dateMulti: document.getElementById("dateMulti"),
       regionMulti: document.getElementById("regionMulti"),
       baseMulti: document.getElementById("baseMulti"),
       ownerMulti: document.getElementById("ownerMulti"),
+      dateMenuButton: document.getElementById("dateMenuButton"),
       regionMenuButton: document.getElementById("regionMenuButton"),
       baseMenuButton: document.getElementById("baseMenuButton"),
       ownerMenuButton: document.getElementById("ownerMenuButton"),
+      dateSearch: document.getElementById("dateSearch"),
       regionSearch: document.getElementById("regionSearch"),
       baseSearch: document.getElementById("baseSearch"),
       ownerSearch: document.getElementById("ownerSearch"),
+      dateOptions: document.getElementById("dateOptions"),
       regionOptions: document.getElementById("regionOptions"),
       baseOptions: document.getElementById("baseOptions"),
       ownerOptions: document.getElementById("ownerOptions"),
       slaFilter: document.getElementById("slaFilter"),
+      trendRange: document.getElementById("trendRange"),
+      trendGranularity: document.getElementById("trendGranularity"),
       adminOpen: document.getElementById("adminOpen"),
       adminClose: document.getElementById("adminClose"),
       adminBackdrop: document.getElementById("adminBackdrop"),
@@ -850,6 +925,7 @@
       sla10Count: document.getElementById("sla10Count"),
       totalValue: document.getElementById("totalValue"),
       maxNoTracking: document.getElementById("maxNoTracking"),
+      trendTitle: document.getElementById("trendTitle"),
       tableCount: document.getElementById("tableCount"),
       detailBody: document.getElementById("detailBody")
     };
@@ -1024,6 +1100,17 @@
     }
 
     function getMultiConfig(type) {
+      if (type === "date") {
+        return {
+          values: getSnapshotDates(),
+          selected: state.selectedDates,
+          search: els.dateSearch,
+          options: els.dateOptions,
+          button: els.dateMenuButton,
+          emptyText: "最新 / Mais recente",
+          selectedText: "已选 {count} 天 / {count} datas"
+        };
+      }
       if (type === "region") {
         return {
           values: [...new Set(state.rows.map((row) => row.region))].sort(),
@@ -1085,7 +1172,11 @@
             config.selected.delete(value);
           }
           updateMultiButton(type);
-          applyFilters();
+          if (type === "date") {
+            loadRowsForSelectedDates();
+          } else {
+            applyFilters();
+          }
         });
         label.appendChild(checkbox);
         label.appendChild(document.createTextNode(value));
@@ -1279,36 +1370,108 @@
       renderTable(rows);
     }
 
+    function getTrendMeta(metric) {
+      const map = {
+        total: {
+          title: "超期总单量趋势 / Tendência Total Acima de SLA+8",
+          color: "#0071e3",
+          currency: false,
+          compute: (rows) => rows.length
+        },
+        sla8: {
+          title: "SLA+8 趋势 / Tendência SLA+8",
+          color: "#facc15",
+          currency: false,
+          compute: (rows) => rows.filter((row) => row.sla === "SLA+8").length
+        },
+        sla9: {
+          title: "SLA+9 趋势 / Tendência SLA+9",
+          color: "#f79009",
+          currency: false,
+          compute: (rows) => rows.filter((row) => row.sla === "SLA+9").length
+        },
+        sla10: {
+          title: "SLA+10 趋势 / Tendência SLA+10",
+          color: "#d92d20",
+          currency: false,
+          compute: (rows) => rows.filter((row) => row.sla === "SLA+10").length
+        },
+        valorTotal: {
+          title: "总金额趋势 / Tendência Valor Total",
+          color: "#d92d20",
+          currency: true,
+          compute: (rows) => rows.reduce((sum, row) => sum + (row.value || 0), 0)
+        },
+        maxNoTracking: {
+          title: "最大 No Tracking 趋势 / Tendência Maior No Tracking",
+          color: "#5856d6",
+          currency: false,
+          compute: (rows) => rows.reduce((max, row) => Math.max(max, row.noTracking || 0), 0)
+        }
+      };
+      return map[metric] || map.total;
+    }
+
+    function filterRowsForTrend(rows) {
+      const selectedRegions = state.selectedRegions;
+      const selectedBases = state.selectedBases;
+      const selectedOwners = state.selectedOwners;
+      const sla = els.slaFilter.value;
+
+      return rows.filter((row) => {
+        const matchRegion = !selectedRegions.size || selectedRegions.has(row.region);
+        const matchBase = !selectedBases.size || selectedBases.has(row.base);
+        const matchOwner = !selectedOwners.size || selectedOwners.has(row.owner);
+        const matchSla = !sla || row.sla === sla;
+        return row.backlog >= 8 && matchRegion && matchBase && matchOwner && matchSla;
+      });
+    }
+
+    function buildTrendPoints() {
+      const meta = getTrendMeta(state.activeTrendMetric);
+      const grouped = new Map();
+      getTrendSourceSnapshots().forEach((snapshot) => {
+        const key = getTrendPeriodKey(snapshot.reportDate);
+        if (!key) return;
+        const current = grouped.get(key) || {
+          period: key,
+          label: getTrendPeriodLabel(key),
+          dates: [],
+          rows: []
+        };
+        current.dates.push(snapshot.reportDate);
+        current.rows.push(...filterRowsForTrend(snapshot.rows || []));
+        grouped.set(key, current);
+      });
+
+      return [...grouped.values()]
+        .sort((a, b) => String(a.period || "").localeCompare(String(b.period || "")))
+        .map((group) => ({
+          period: group.period,
+          label: group.label,
+          dates: group.dates,
+          value: meta.compute(group.rows)
+        }));
+    }
+
     function renderTrendChart() {
       if (!window.Chart) return;
       if (state.charts.trendChart) state.charts.trendChart.destroy();
 
-      const labels = state.history.map((item) => item.reportDate);
+      const meta = getTrendMeta(state.activeTrendMetric);
+      const points = buildTrendPoints();
+      els.trendTitle.textContent = meta.title;
       const ctx = document.getElementById("trendChart");
       state.charts.trendChart = new Chart(ctx, {
         type: "line",
         data: {
-          labels,
+          labels: points.map((item) => item.label),
           datasets: [
             {
-              label: "SLA+8",
-              data: state.history.map((item) => item.sla8 || 0),
-              borderColor: "#facc15",
-              backgroundColor: "rgba(250, 204, 21, 0.14)",
-              tension: 0.28
-            },
-            {
-              label: "SLA+9",
-              data: state.history.map((item) => item.sla9 || 0),
-              borderColor: "#f79009",
-              backgroundColor: "rgba(247, 144, 9, 0.14)",
-              tension: 0.28
-            },
-            {
-              label: "SLA+10",
-              data: state.history.map((item) => item.sla10 || 0),
-              borderColor: "#d92d20",
-              backgroundColor: "rgba(217, 45, 32, 0.12)",
+              label: meta.title,
+              data: points.map((item) => item.value),
+              borderColor: meta.color,
+              backgroundColor: `${meta.color}22`,
               tension: 0.28
             }
           ]
@@ -1317,10 +1480,21 @@
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: {display: true}
+            legend: {display: false},
+            tooltip: {
+              callbacks: meta.currency ? {
+                label: (context) => formatMoney(context.raw)
+              } : {}
+            }
           },
           scales: {
-            y: {beginAtZero: true, ticks: {precision: 0}}
+            y: {
+              beginAtZero: true,
+              ticks: {
+                precision: meta.currency ? undefined : 0,
+                callback: meta.currency ? (value) => formatMoney(value) : undefined
+              }
+            }
           }
         }
       });
@@ -1347,17 +1521,191 @@
 
     function setLocalHistory(reportDate, rows) {
       const summary = summarizeRows(rows);
-      const next = {
+      const snapshot = {
+        reportDate,
+        rows,
+        publishedAt: new Date().toISOString(),
+        fileName: "local",
+        summary
+      };
+      const nextHistory = {
         reportDate,
         ...summary
       };
+      state.snapshots = [
+        ...state.snapshots.filter((item) => item.reportDate !== reportDate),
+        snapshot
+      ].sort((a, b) => String(a.reportDate || "").localeCompare(String(b.reportDate || "")));
       state.history = [
         ...state.history.filter((item) => item.reportDate !== reportDate),
-        next
+        nextHistory
       ].sort((a, b) => String(a.reportDate || "").localeCompare(String(b.reportDate || "")));
+      refreshDateOptions(reportDate);
+      loadRowsForSelectedDates();
+    }
+
+    function normalizeRows(rows) {
+      return rows
+        .map((row) => ({
+          awb: String(row.awb || "").trim(),
+          region: String(row.region || "").trim() || "Sem região / 无区域",
+          backlog: toNumber(row.backlog),
+          noTracking: toNumber(row.noTracking),
+          date: String(row.date || "").trim(),
+          type: String(row.type || "").trim(),
+          base: String(row.base || "").trim() || "Sem base / 无网点",
+          owner: String(row.owner || "").trim() || "Sem especialista / 无负责人",
+          value: toNumber(row.value),
+          sla: row.sla || getSla(toNumber(row.backlog)),
+          action: row.action || getAction(row.type)
+        }))
+        .filter((row) => row.awb && row.backlog >= 8);
     }
 
     function hydrateRows(rows) {
+      state.rows = normalizeRows(rows);
+      refreshFilters();
+      applyFilters();
+    }
+
+    function refreshDateOptions(selectedDate) {
+      const dates = state.snapshots
+        .map((snapshot) => snapshot.reportDate)
+        .filter(Boolean)
+        .sort()
+        .reverse();
+      state.selectedDates = new Set([...state.selectedDates].filter((value) => dates.includes(value)));
+      if (selectedDate && dates.includes(selectedDate)) {
+        state.selectedDates = new Set([selectedDate]);
+      }
+      renderMultiFilter("date", dates);
+      updateMultiButton("date");
+    }
+
+    function getSnapshotDates() {
+      return state.snapshots
+        .map((snapshot) => snapshot.reportDate)
+        .filter(Boolean)
+        .sort()
+        .reverse();
+    }
+
+    function getActiveDates() {
+      const dates = getSnapshotDates();
+      const selected = [...state.selectedDates].filter((date) => dates.includes(date));
+      return selected.length ? selected : (dates[0] ? [dates[0]] : []);
+    }
+
+    function getSnapshotsForDates(dates) {
+      const wanted = new Set(dates);
+      return state.snapshots.filter((snapshot) => wanted.has(snapshot.reportDate));
+    }
+
+    function loadRowsForSelectedDates() {
+      const dates = getActiveDates();
+      const snapshots = getSnapshotsForDates(dates);
+      if (!snapshots.length) {
+        hydrateRows([]);
+        setPublicDataStatus("暂无线上数据 / Sem dados publicados");
+        return;
+      }
+
+      const rows = snapshots.flatMap((snapshot) => snapshot.rows || []);
+      hydrateRows(rows);
+      const sortedDates = [...dates].sort();
+      const dateLabel = sortedDates.length === 1
+        ? sortedDates[0]
+        : `${sortedDates[0]} - ${sortedDates[sortedDates.length - 1]} (${sortedDates.length} 天 / datas)`;
+      const latestSnapshot = [...snapshots].sort((a, b) => {
+        return String(b.reportDate || "").localeCompare(String(a.reportDate || ""))
+          || String(b.publishedAt || "").localeCompare(String(a.publishedAt || ""));
+      })[0];
+      const time = latestSnapshot?.publishedAt ? new Date(latestSnapshot.publishedAt).toLocaleString("pt-BR") : "";
+      setPublicDataStatus(`已发布 ${state.rows.length} 条 ${dateLabel} / ${state.rows.length} publicados ${time}`);
+    }
+
+    function addDays(dateText, days) {
+      const date = new Date(`${dateText}T00:00:00`);
+      date.setDate(date.getDate() + days);
+      return date.toISOString().slice(0, 10);
+    }
+
+    function getIsoWeekKey(dateText) {
+      const date = new Date(`${dateText}T00:00:00`);
+      date.setHours(0, 0, 0, 0);
+      date.setDate(date.getDate() + 3 - ((date.getDay() + 6) % 7));
+      const week1 = new Date(date.getFullYear(), 0, 4);
+      const week = 1 + Math.round(((date - week1) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+      return `${date.getFullYear()}-W${String(week).padStart(2, "0")}`;
+    }
+
+    function getTrendSourceSnapshots() {
+      let snapshots = [...state.snapshots].sort((a, b) => String(a.reportDate || "").localeCompare(String(b.reportDate || "")));
+      if (state.trendRange === "selected") {
+        const activeDates = new Set(getActiveDates());
+        return snapshots.filter((snapshot) => activeDates.has(snapshot.reportDate));
+      }
+
+      const days = Number(state.trendRange);
+      if (Number.isFinite(days) && days > 0 && snapshots.length) {
+        const latest = snapshots[snapshots.length - 1].reportDate;
+        const start = addDays(latest, -(days - 1));
+        snapshots = snapshots.filter((snapshot) => snapshot.reportDate >= start && snapshot.reportDate <= latest);
+      }
+      return snapshots;
+    }
+
+    function getTrendPeriodKey(reportDate) {
+      if (state.trendGranularity === "month") return String(reportDate || "").slice(0, 7);
+      if (state.trendGranularity === "week") return getIsoWeekKey(reportDate);
+      return reportDate;
+    }
+
+    function getTrendPeriodLabel(key) {
+      if (state.trendGranularity === "month") return `${key} 月 / mês`;
+      if (state.trendGranularity === "week") return `${key} 周 / semana`;
+      return key;
+    }
+
+    function hydrateSnapshots(payload) {
+      const latestSnapshot = payload.rows?.length ? [{
+        reportDate: payload.reportDate || todayIsoDate(),
+        rows: payload.rows,
+        fileName: payload.fileName,
+        publishedAt: payload.publishedAt,
+        summary: summarizeRows(normalizeRows(payload.rows))
+      }] : [];
+      const historySnapshots = Array.isArray(payload.snapshots) ? payload.snapshots : [];
+      const fromHistory = Array.isArray(payload.history)
+        ? payload.history.map((item) => ({
+          reportDate: item.reportDate,
+          rows: item.rows || [],
+          fileName: item.fileName,
+          publishedAt: item.publishedAt,
+          summary: item
+        })).filter((item) => item.rows.length)
+        : [];
+      const byDate = new Map();
+      [...historySnapshots, ...fromHistory, ...latestSnapshot].forEach((snapshot) => {
+        if (!snapshot.reportDate) return;
+        byDate.set(snapshot.reportDate, {
+          ...snapshot,
+          rows: normalizeRows(snapshot.rows || [])
+        });
+      });
+      state.snapshots = [...byDate.values()].sort((a, b) => String(a.reportDate || "").localeCompare(String(b.reportDate || "")));
+      state.history = state.snapshots.map((snapshot) => ({
+        reportDate: snapshot.reportDate,
+        publishedAt: snapshot.publishedAt,
+        fileName: snapshot.fileName,
+        ...summarizeRows(snapshot.rows || []),
+        ...(snapshot.summary || {})
+      }));
+      refreshDateOptions(payload.reportDate);
+      loadRowsForSelectedDates();
+    }
+
+    function hydrateRowsOld(rows) {
       state.rows = rows
         .map((row) => ({
           awb: String(row.awb || "").trim(),
@@ -1388,12 +1736,8 @@
         const response = await fetch("/api/data", {cache: "no-store"});
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const payload = await response.json();
-        state.history = Array.isArray(payload.history) ? payload.history : [];
-        if (payload.rows && payload.rows.length) {
-          hydrateRows(payload.rows);
-          const time = payload.publishedAt ? new Date(payload.publishedAt).toLocaleString("pt-BR") : "";
-          const dateText = payload.reportDate ? ` ${payload.reportDate}` : "";
-          setPublicDataStatus(`已发布 ${payload.rows.length} 条${dateText} / ${payload.rows.length} publicados ${time}`);
+        hydrateSnapshots(payload);
+        if (state.rows.length) {
           setDataStatus(`当前线上数据：${payload.fileName || "latest"} / Dados online carregados.`);
         } else {
           setPublicDataStatus("暂无线上数据 / Sem dados publicados");
@@ -1567,8 +1911,28 @@
       el.addEventListener("change", applyFilters);
     });
 
+    els.trendRange.addEventListener("change", () => {
+      state.trendRange = els.trendRange.value;
+      renderTrendChart();
+    });
+
+    els.trendGranularity.addEventListener("change", () => {
+      state.trendGranularity = els.trendGranularity.value;
+      renderTrendChart();
+    });
+
+    document.querySelectorAll("[data-trend-metric]").forEach((metric) => {
+      metric.addEventListener("click", () => {
+        state.activeTrendMetric = metric.dataset.trendMetric;
+        document.querySelectorAll("[data-trend-metric]").forEach((item) => item.classList.remove("active"));
+        metric.classList.add("active");
+        renderTrendChart();
+      });
+    });
+
     function toggleMulti(type) {
       const multiMap = {
+        date: els.dateMulti,
         region: els.regionMulti,
         base: els.baseMulti,
         owner: els.ownerMulti
@@ -1584,10 +1948,14 @@
       }
     }
 
+    els.dateMenuButton.addEventListener("click", () => toggleMulti("date"));
     els.regionMenuButton.addEventListener("click", () => toggleMulti("region"));
     els.baseMenuButton.addEventListener("click", () => toggleMulti("base"));
     els.ownerMenuButton.addEventListener("click", () => toggleMulti("owner"));
 
+    els.dateSearch.addEventListener("input", () => {
+      renderMultiFilter("date", getMultiConfig("date").values);
+    });
     els.regionSearch.addEventListener("input", () => {
       renderMultiFilter("region", getMultiConfig("region").values);
     });
@@ -1606,11 +1974,16 @@
         config.search.value = "";
         renderMultiFilter(type, config.values);
         updateMultiButton(type);
-        applyFilters();
+        if (type === "date") {
+          loadRowsForSelectedDates();
+        } else {
+          applyFilters();
+        }
       });
     });
 
     document.addEventListener("click", (event) => {
+      if (!els.dateMulti.contains(event.target)) els.dateMulti.classList.remove("open");
       if (!els.regionMulti.contains(event.target)) els.regionMulti.classList.remove("open");
       if (!els.baseMulti.contains(event.target)) els.baseMulti.classList.remove("open");
       if (!els.ownerMulti.contains(event.target)) els.ownerMulti.classList.remove("open");
@@ -1653,16 +2026,14 @@
       }
 
       if (type === "trend") {
+        const meta = getTrendMeta(state.activeTrendMetric);
         return {
-          filename: "Tendencia_diaria_SLA.csv",
-          headers: ["Data", "SLA+8", "SLA+9", "SLA+10", "Total", "Valor Total"],
-          rows: state.history.map((item) => [
-            item.reportDate,
-            item.sla8 || 0,
-            item.sla9 || 0,
-            item.sla10 || 0,
-            item.total || 0,
-            Number(item.valorTotal || 0).toFixed(2)
+          filename: `Tendencia_${state.activeTrendMetric}.csv`,
+          headers: ["Período", "Datas", meta.title],
+          rows: buildTrendPoints().map((item) => [
+            item.label,
+            (item.dates || []).join(" / "),
+            meta.currency ? Number(item.value || 0).toFixed(2) : item.value
           ])
         };
       }
@@ -1720,10 +2091,12 @@
 
     function getFilterText() {
       const parts = [
+        `Data=${formatSelectedFilter(state.selectedDates, "Mais recente")}`,
         `Região=${formatSelectedFilter(state.selectedRegions, "Todas")}`,
         `Base=${formatSelectedFilter(state.selectedBases, "Todas")}`,
         `Especialista=${formatSelectedFilter(state.selectedOwners, "Todos")}`,
         `Faixa Acima de SLA+8=${els.slaFilter.value || "Todas"}`,
+        `Tendência=${els.trendRange.value}/${els.trendGranularity.value}`,
       ];
       return parts.join("; ");
     }
