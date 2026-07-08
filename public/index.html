@@ -356,6 +356,24 @@
       margin-bottom: 12px;
     }
 
+    .panel-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .compact-select {
+      width: auto;
+      min-width: 136px;
+      min-height: 32px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      background: rgba(255, 255, 255, 0.74);
+    }
+
     .panel h2 {
       margin: 0;
       font-size: 17px;
@@ -623,10 +641,17 @@
   <main>
     <section class="toolbar" aria-label="筛选器">
       <div class="control">
-        <label for="viewDate">数据日期 / Data do relatório</label>
-        <select id="viewDate">
-          <option value="">最新 / Mais recente</option>
-        </select>
+        <label for="dateMenuButton">数据日期 / Data do relatório</label>
+        <div id="dateMulti" class="multi-filter">
+          <button id="dateMenuButton" class="multi-button" type="button">最新 / Mais recente</button>
+          <div class="multi-popover">
+            <input id="dateSearch" class="multi-search" type="search" placeholder="搜索日期 / Buscar data">
+            <div id="dateOptions" class="multi-options"></div>
+            <div class="multi-footer">
+              <button class="export-small" data-clear-filter="date" type="button">Mais recente</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="control">
@@ -721,7 +746,21 @@
     <section id="kpiTrendPanel" class="panel trend-panel">
       <div class="panel-head">
         <h2 id="trendTitle">超期总单量趋势 / Tendência Total Acima de SLA+8</h2>
-        <button class="export-small" data-export="trend" type="button">Exportar CSV</button>
+        <div class="panel-actions">
+          <select id="trendRange" class="compact-select" aria-label="趋势范围">
+            <option value="all">全部历史 / Todo histórico</option>
+            <option value="selected">所选日期 / Datas selecionadas</option>
+            <option value="7">最近 7 天 / Últimos 7 dias</option>
+            <option value="30">最近 30 天 / Últimos 30 dias</option>
+            <option value="90">最近 90 天 / Últimos 90 dias</option>
+          </select>
+          <select id="trendGranularity" class="compact-select" aria-label="趋势维度">
+            <option value="day">按日 / Diário</option>
+            <option value="week">按周 / Semanal</option>
+            <option value="month">按月 / Mensal</option>
+          </select>
+          <button class="export-small" data-export="trend" type="button">Exportar CSV</button>
+        </div>
       </div>
       <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
     </section>
@@ -838,7 +877,10 @@
       snapshots: [],
       history: [],
       activeTrendMetric: "total",
+      trendRange: "all",
+      trendGranularity: "day",
       charts: {},
+      selectedDates: new Set(),
       selectedRegions: new Set(),
       selectedBases: new Set(),
       selectedOwners: new Set()
@@ -847,20 +889,25 @@
     const els = {
       fileInput: document.getElementById("fileInput"),
       reportDate: document.getElementById("reportDate"),
-      viewDate: document.getElementById("viewDate"),
+      dateMulti: document.getElementById("dateMulti"),
       regionMulti: document.getElementById("regionMulti"),
       baseMulti: document.getElementById("baseMulti"),
       ownerMulti: document.getElementById("ownerMulti"),
+      dateMenuButton: document.getElementById("dateMenuButton"),
       regionMenuButton: document.getElementById("regionMenuButton"),
       baseMenuButton: document.getElementById("baseMenuButton"),
       ownerMenuButton: document.getElementById("ownerMenuButton"),
+      dateSearch: document.getElementById("dateSearch"),
       regionSearch: document.getElementById("regionSearch"),
       baseSearch: document.getElementById("baseSearch"),
       ownerSearch: document.getElementById("ownerSearch"),
+      dateOptions: document.getElementById("dateOptions"),
       regionOptions: document.getElementById("regionOptions"),
       baseOptions: document.getElementById("baseOptions"),
       ownerOptions: document.getElementById("ownerOptions"),
       slaFilter: document.getElementById("slaFilter"),
+      trendRange: document.getElementById("trendRange"),
+      trendGranularity: document.getElementById("trendGranularity"),
       adminOpen: document.getElementById("adminOpen"),
       adminClose: document.getElementById("adminClose"),
       adminBackdrop: document.getElementById("adminBackdrop"),
@@ -1053,6 +1100,17 @@
     }
 
     function getMultiConfig(type) {
+      if (type === "date") {
+        return {
+          values: getSnapshotDates(),
+          selected: state.selectedDates,
+          search: els.dateSearch,
+          options: els.dateOptions,
+          button: els.dateMenuButton,
+          emptyText: "最新 / Mais recente",
+          selectedText: "已选 {count} 天 / {count} datas"
+        };
+      }
       if (type === "region") {
         return {
           values: [...new Set(state.rows.map((row) => row.region))].sort(),
@@ -1114,7 +1172,11 @@
             config.selected.delete(value);
           }
           updateMultiButton(type);
-          applyFilters();
+          if (type === "date") {
+            loadRowsForSelectedDates();
+          } else {
+            applyFilters();
+          }
         });
         label.appendChild(checkbox);
         label.appendChild(document.createTextNode(value));
@@ -1367,15 +1429,29 @@
 
     function buildTrendPoints() {
       const meta = getTrendMeta(state.activeTrendMetric);
-      return state.snapshots
-        .map((snapshot) => {
-          const rows = filterRowsForTrend(snapshot.rows || []);
-          return {
-            reportDate: snapshot.reportDate,
-            value: meta.compute(rows)
-          };
-        })
-        .sort((a, b) => String(a.reportDate || "").localeCompare(String(b.reportDate || "")));
+      const grouped = new Map();
+      getTrendSourceSnapshots().forEach((snapshot) => {
+        const key = getTrendPeriodKey(snapshot.reportDate);
+        if (!key) return;
+        const current = grouped.get(key) || {
+          period: key,
+          label: getTrendPeriodLabel(key),
+          dates: [],
+          rows: []
+        };
+        current.dates.push(snapshot.reportDate);
+        current.rows.push(...filterRowsForTrend(snapshot.rows || []));
+        grouped.set(key, current);
+      });
+
+      return [...grouped.values()]
+        .sort((a, b) => String(a.period || "").localeCompare(String(b.period || "")))
+        .map((group) => ({
+          period: group.period,
+          label: group.label,
+          dates: group.dates,
+          value: meta.compute(group.rows)
+        }));
     }
 
     function renderTrendChart() {
@@ -1389,7 +1465,7 @@
       state.charts.trendChart = new Chart(ctx, {
         type: "line",
         data: {
-          labels: points.map((item) => item.reportDate),
+          labels: points.map((item) => item.label),
           datasets: [
             {
               label: meta.title,
@@ -1465,6 +1541,7 @@
         nextHistory
       ].sort((a, b) => String(a.reportDate || "").localeCompare(String(b.reportDate || "")));
       refreshDateOptions(reportDate);
+      loadRowsForSelectedDates();
     }
 
     function normalizeRows(rows) {
@@ -1497,30 +1574,97 @@
         .filter(Boolean)
         .sort()
         .reverse();
-      const current = selectedDate || els.viewDate.value || dates[0] || "";
-      els.viewDate.innerHTML = "";
-      dates.forEach((date) => {
-        const option = document.createElement("option");
-        option.value = date;
-        option.textContent = date;
-        els.viewDate.appendChild(option);
-      });
-      if (current && dates.includes(current)) {
-        els.viewDate.value = current;
+      state.selectedDates = new Set([...state.selectedDates].filter((value) => dates.includes(value)));
+      if (selectedDate && dates.includes(selectedDate)) {
+        state.selectedDates = new Set([selectedDate]);
       }
+      renderMultiFilter("date", dates);
+      updateMultiButton("date");
     }
 
-    function loadSnapshotForDate(date) {
-      const sorted = [...state.snapshots].sort((a, b) => String(b.reportDate || "").localeCompare(String(a.reportDate || "")));
-      const snapshot = sorted.find((item) => item.reportDate === date) || sorted[0];
-      if (!snapshot) {
+    function getSnapshotDates() {
+      return state.snapshots
+        .map((snapshot) => snapshot.reportDate)
+        .filter(Boolean)
+        .sort()
+        .reverse();
+    }
+
+    function getActiveDates() {
+      const dates = getSnapshotDates();
+      const selected = [...state.selectedDates].filter((date) => dates.includes(date));
+      return selected.length ? selected : (dates[0] ? [dates[0]] : []);
+    }
+
+    function getSnapshotsForDates(dates) {
+      const wanted = new Set(dates);
+      return state.snapshots.filter((snapshot) => wanted.has(snapshot.reportDate));
+    }
+
+    function loadRowsForSelectedDates() {
+      const dates = getActiveDates();
+      const snapshots = getSnapshotsForDates(dates);
+      if (!snapshots.length) {
         hydrateRows([]);
+        setPublicDataStatus("暂无线上数据 / Sem dados publicados");
         return;
       }
-      els.viewDate.value = snapshot.reportDate;
-      hydrateRows(snapshot.rows || []);
-      const time = snapshot.publishedAt ? new Date(snapshot.publishedAt).toLocaleString("pt-BR") : "";
-      setPublicDataStatus(`已发布 ${state.rows.length} 条 ${snapshot.reportDate} / ${state.rows.length} publicados ${time}`);
+
+      const rows = snapshots.flatMap((snapshot) => snapshot.rows || []);
+      hydrateRows(rows);
+      const sortedDates = [...dates].sort();
+      const dateLabel = sortedDates.length === 1
+        ? sortedDates[0]
+        : `${sortedDates[0]} - ${sortedDates[sortedDates.length - 1]} (${sortedDates.length} 天 / datas)`;
+      const latestSnapshot = [...snapshots].sort((a, b) => {
+        return String(b.reportDate || "").localeCompare(String(a.reportDate || ""))
+          || String(b.publishedAt || "").localeCompare(String(a.publishedAt || ""));
+      })[0];
+      const time = latestSnapshot?.publishedAt ? new Date(latestSnapshot.publishedAt).toLocaleString("pt-BR") : "";
+      setPublicDataStatus(`已发布 ${state.rows.length} 条 ${dateLabel} / ${state.rows.length} publicados ${time}`);
+    }
+
+    function addDays(dateText, days) {
+      const date = new Date(`${dateText}T00:00:00`);
+      date.setDate(date.getDate() + days);
+      return date.toISOString().slice(0, 10);
+    }
+
+    function getIsoWeekKey(dateText) {
+      const date = new Date(`${dateText}T00:00:00`);
+      date.setHours(0, 0, 0, 0);
+      date.setDate(date.getDate() + 3 - ((date.getDay() + 6) % 7));
+      const week1 = new Date(date.getFullYear(), 0, 4);
+      const week = 1 + Math.round(((date - week1) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+      return `${date.getFullYear()}-W${String(week).padStart(2, "0")}`;
+    }
+
+    function getTrendSourceSnapshots() {
+      let snapshots = [...state.snapshots].sort((a, b) => String(a.reportDate || "").localeCompare(String(b.reportDate || "")));
+      if (state.trendRange === "selected") {
+        const activeDates = new Set(getActiveDates());
+        return snapshots.filter((snapshot) => activeDates.has(snapshot.reportDate));
+      }
+
+      const days = Number(state.trendRange);
+      if (Number.isFinite(days) && days > 0 && snapshots.length) {
+        const latest = snapshots[snapshots.length - 1].reportDate;
+        const start = addDays(latest, -(days - 1));
+        snapshots = snapshots.filter((snapshot) => snapshot.reportDate >= start && snapshot.reportDate <= latest);
+      }
+      return snapshots;
+    }
+
+    function getTrendPeriodKey(reportDate) {
+      if (state.trendGranularity === "month") return String(reportDate || "").slice(0, 7);
+      if (state.trendGranularity === "week") return getIsoWeekKey(reportDate);
+      return reportDate;
+    }
+
+    function getTrendPeriodLabel(key) {
+      if (state.trendGranularity === "month") return `${key} 月 / mês`;
+      if (state.trendGranularity === "week") return `${key} 周 / semana`;
+      return key;
     }
 
     function hydrateSnapshots(payload) {
@@ -1558,7 +1702,7 @@
         ...(snapshot.summary || {})
       }));
       refreshDateOptions(payload.reportDate);
-      loadSnapshotForDate(payload.reportDate || els.viewDate.value);
+      loadRowsForSelectedDates();
     }
 
     function hydrateRowsOld(rows) {
@@ -1767,8 +1911,14 @@
       el.addEventListener("change", applyFilters);
     });
 
-    els.viewDate.addEventListener("change", () => {
-      loadSnapshotForDate(els.viewDate.value);
+    els.trendRange.addEventListener("change", () => {
+      state.trendRange = els.trendRange.value;
+      renderTrendChart();
+    });
+
+    els.trendGranularity.addEventListener("change", () => {
+      state.trendGranularity = els.trendGranularity.value;
+      renderTrendChart();
     });
 
     document.querySelectorAll("[data-trend-metric]").forEach((metric) => {
@@ -1782,6 +1932,7 @@
 
     function toggleMulti(type) {
       const multiMap = {
+        date: els.dateMulti,
         region: els.regionMulti,
         base: els.baseMulti,
         owner: els.ownerMulti
@@ -1797,10 +1948,14 @@
       }
     }
 
+    els.dateMenuButton.addEventListener("click", () => toggleMulti("date"));
     els.regionMenuButton.addEventListener("click", () => toggleMulti("region"));
     els.baseMenuButton.addEventListener("click", () => toggleMulti("base"));
     els.ownerMenuButton.addEventListener("click", () => toggleMulti("owner"));
 
+    els.dateSearch.addEventListener("input", () => {
+      renderMultiFilter("date", getMultiConfig("date").values);
+    });
     els.regionSearch.addEventListener("input", () => {
       renderMultiFilter("region", getMultiConfig("region").values);
     });
@@ -1819,11 +1974,16 @@
         config.search.value = "";
         renderMultiFilter(type, config.values);
         updateMultiButton(type);
-        applyFilters();
+        if (type === "date") {
+          loadRowsForSelectedDates();
+        } else {
+          applyFilters();
+        }
       });
     });
 
     document.addEventListener("click", (event) => {
+      if (!els.dateMulti.contains(event.target)) els.dateMulti.classList.remove("open");
       if (!els.regionMulti.contains(event.target)) els.regionMulti.classList.remove("open");
       if (!els.baseMulti.contains(event.target)) els.baseMulti.classList.remove("open");
       if (!els.ownerMulti.contains(event.target)) els.ownerMulti.classList.remove("open");
@@ -1869,9 +2029,10 @@
         const meta = getTrendMeta(state.activeTrendMetric);
         return {
           filename: `Tendencia_${state.activeTrendMetric}.csv`,
-          headers: ["Data", meta.title],
+          headers: ["Período", "Datas", meta.title],
           rows: buildTrendPoints().map((item) => [
-            item.reportDate,
+            item.label,
+            (item.dates || []).join(" / "),
             meta.currency ? Number(item.value || 0).toFixed(2) : item.value
           ])
         };
@@ -1930,10 +2091,12 @@
 
     function getFilterText() {
       const parts = [
+        `Data=${formatSelectedFilter(state.selectedDates, "Mais recente")}`,
         `Região=${formatSelectedFilter(state.selectedRegions, "Todas")}`,
         `Base=${formatSelectedFilter(state.selectedBases, "Todas")}`,
         `Especialista=${formatSelectedFilter(state.selectedOwners, "Todos")}`,
         `Faixa Acima de SLA+8=${els.slaFilter.value || "Todas"}`,
+        `Tendência=${els.trendRange.value}/${els.trendGranularity.value}`,
       ];
       return parts.join("; ");
     }
