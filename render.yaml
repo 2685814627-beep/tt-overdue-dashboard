@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: tt-overdue-dashboard
+    env: node
+    plan: starter
+    buildCommand: ""
+    startCommand: "npm start"
+    envVars:
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: DATA_DIR
+        value: /var/data
+    disk:
+      name: tt-dashboard-data
+      mountPath: /var/data
+      sizeGB: 1
