@@ -600,14 +600,14 @@
   <main>
     <section class="toolbar" aria-label="筛选器">
       <div class="control">
-        <label for="baseMenuButton">网点 / Base</label>
-        <div id="baseMulti" class="multi-filter">
-          <button id="baseMenuButton" class="multi-button" type="button">全部 / Todas</button>
+        <label for="regionMenuButton">区域 / Região</label>
+        <div id="regionMulti" class="multi-filter">
+          <button id="regionMenuButton" class="multi-button" type="button">全部 / Todas</button>
           <div class="multi-popover">
-            <input id="baseSearch" class="multi-search" type="search" placeholder="搜索网点 / Buscar base">
-            <div id="baseOptions" class="multi-options"></div>
+            <input id="regionSearch" class="multi-search" type="search" placeholder="搜索区域 / Buscar região">
+            <div id="regionOptions" class="multi-options"></div>
             <div class="multi-footer">
-              <button class="export-small" data-clear-filter="base" type="button">Limpar</button>
+              <button class="export-small" data-clear-filter="region" type="button">Limpar</button>
             </div>
           </div>
         </div>
@@ -628,6 +628,20 @@
       </div>
 
       <div class="control">
+        <label for="baseMenuButton">网点 / Base</label>
+        <div id="baseMulti" class="multi-filter">
+          <button id="baseMenuButton" class="multi-button" type="button">全部 / Todas</button>
+          <div class="multi-popover">
+            <input id="baseSearch" class="multi-search" type="search" placeholder="搜索网点 / Buscar base">
+            <div id="baseOptions" class="multi-options"></div>
+            <div class="multi-footer">
+              <button class="export-small" data-clear-filter="base" type="button">Limpar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="control">
         <label for="slaFilter">超期分段 / Faixa Acima de SLA+8</label>
         <select id="slaFilter">
           <option value="">全部 / Todas</option>
@@ -635,11 +649,6 @@
           <option value="SLA+9">SLA+9</option>
           <option value="SLA+10">SLA+10</option>
         </select>
-      </div>
-
-      <div class="control">
-        <label for="searchInput">搜索 AWB / Buscar AWB</label>
-        <input id="searchInput" type="search" placeholder="输入 AWB">
       </div>
     </section>
 
@@ -723,6 +732,7 @@
           <thead>
             <tr>
               <th>AWB</th>
+              <th>区域 / Região</th>
               <th>超期分段 / Faixa</th>
               <th>Backlog (D)</th>
               <th>No tracking (D)</th>
@@ -770,6 +780,7 @@
 
   <script>
     const fieldMap = {
+      region: ["Região", "região", "regiao", "Region", "region", "区域", "Área", "Area", "área", "area", "regional", "Regional"],
       awb: ["AWB", "awb"],
       backlog: ["Backlog (D)", "Backlog", "backlog"],
       noTracking: ["No tracking (D)", "No Tracking (D)", "No tracking", "no tracking"],
@@ -784,22 +795,26 @@
       rows: [],
       filtered: [],
       charts: {},
+      selectedRegions: new Set(),
       selectedBases: new Set(),
       selectedOwners: new Set()
     };
 
     const els = {
       fileInput: document.getElementById("fileInput"),
+      regionMulti: document.getElementById("regionMulti"),
       baseMulti: document.getElementById("baseMulti"),
       ownerMulti: document.getElementById("ownerMulti"),
+      regionMenuButton: document.getElementById("regionMenuButton"),
       baseMenuButton: document.getElementById("baseMenuButton"),
       ownerMenuButton: document.getElementById("ownerMenuButton"),
+      regionSearch: document.getElementById("regionSearch"),
       baseSearch: document.getElementById("baseSearch"),
       ownerSearch: document.getElementById("ownerSearch"),
+      regionOptions: document.getElementById("regionOptions"),
       baseOptions: document.getElementById("baseOptions"),
       ownerOptions: document.getElementById("ownerOptions"),
       slaFilter: document.getElementById("slaFilter"),
-      searchInput: document.getElementById("searchInput"),
       adminOpen: document.getElementById("adminOpen"),
       adminClose: document.getElementById("adminClose"),
       adminBackdrop: document.getElementById("adminBackdrop"),
@@ -892,6 +907,7 @@
       const type = String(findValue(raw, fieldMap.type) || "").trim();
       return {
         awb: String(findValue(raw, fieldMap.awb) || "").trim(),
+        region: String(findValue(raw, fieldMap.region) || "").trim() || "Sem região / 无区域",
         backlog,
         noTracking,
         date: formatDate(findValue(raw, fieldMap.date)),
@@ -955,17 +971,32 @@
     }
 
     function refreshFilters() {
+      const regions = [...new Set(state.rows.map((row) => row.region))].sort();
       const bases = [...new Set(state.rows.map((row) => row.base))].sort();
       const owners = [...new Set(state.rows.map((row) => row.owner))].sort();
+      state.selectedRegions = new Set([...state.selectedRegions].filter((value) => regions.includes(value)));
       state.selectedBases = new Set([...state.selectedBases].filter((value) => bases.includes(value)));
       state.selectedOwners = new Set([...state.selectedOwners].filter((value) => owners.includes(value)));
+      renderMultiFilter("region", regions);
       renderMultiFilter("base", bases);
       renderMultiFilter("owner", owners);
+      updateMultiButton("region");
       updateMultiButton("base");
       updateMultiButton("owner");
     }
 
     function getMultiConfig(type) {
+      if (type === "region") {
+        return {
+          values: [...new Set(state.rows.map((row) => row.region))].sort(),
+          selected: state.selectedRegions,
+          search: els.regionSearch,
+          options: els.regionOptions,
+          button: els.regionMenuButton,
+          emptyText: "全部 / Todas",
+          selectedText: "已选 {count} 个 / {count} regiões"
+        };
+      }
       if (type === "base") {
         return {
           values: [...new Set(state.rows.map((row) => row.base))].sort(),
@@ -1033,17 +1064,17 @@
     }
 
     function applyFilters() {
+      const selectedRegions = state.selectedRegions;
       const selectedBases = state.selectedBases;
       const selectedOwners = state.selectedOwners;
       const sla = els.slaFilter.value;
-      const search = normalizeKey(els.searchInput.value);
 
       state.filtered = state.rows.filter((row) => {
+        const matchRegion = !selectedRegions.size || selectedRegions.has(row.region);
         const matchBase = !selectedBases.size || selectedBases.has(row.base);
         const matchOwner = !selectedOwners.size || selectedOwners.has(row.owner);
         const matchSla = !sla || row.sla === sla;
-        const matchSearch = !search || normalizeKey(row.awb).includes(search);
-        return row.backlog >= 8 && matchBase && matchOwner && matchSla && matchSearch;
+        return row.backlog >= 8 && matchRegion && matchBase && matchOwner && matchSla;
       });
 
       state.filtered.sort((a, b) => {
@@ -1157,6 +1188,7 @@
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${escapeHtml(row.awb)}</td>
+          <td>${escapeHtml(row.region)}</td>
           <td><span class="badge ${row.sla.toLowerCase().replace("+", "")}">${row.sla}</span></td>
           <td>${row.backlog}</td>
           <td>${row.noTracking}</td>
@@ -1335,15 +1367,21 @@
       if (event.key === "Escape") closeAdmin();
     });
 
-    [els.slaFilter, els.searchInput].forEach((el) => {
+    [els.slaFilter].forEach((el) => {
       el.addEventListener("input", applyFilters);
       el.addEventListener("change", applyFilters);
     });
 
     function toggleMulti(type) {
-      const current = type === "base" ? els.baseMulti : els.ownerMulti;
-      const other = type === "base" ? els.ownerMulti : els.baseMulti;
-      other.classList.remove("open");
+      const multiMap = {
+        region: els.regionMulti,
+        base: els.baseMulti,
+        owner: els.ownerMulti
+      };
+      const current = multiMap[type];
+      Object.entries(multiMap).forEach(([key, element]) => {
+        if (key !== type) element.classList.remove("open");
+      });
       current.classList.toggle("open");
       const config = getMultiConfig(type);
       if (current.classList.contains("open")) {
@@ -1351,9 +1389,13 @@
       }
     }
 
+    els.regionMenuButton.addEventListener("click", () => toggleMulti("region"));
     els.baseMenuButton.addEventListener("click", () => toggleMulti("base"));
     els.ownerMenuButton.addEventListener("click", () => toggleMulti("owner"));
 
+    els.regionSearch.addEventListener("input", () => {
+      renderMultiFilter("region", getMultiConfig("region").values);
+    });
     els.baseSearch.addEventListener("input", () => {
       renderMultiFilter("base", getMultiConfig("base").values);
     });
@@ -1374,6 +1416,7 @@
     });
 
     document.addEventListener("click", (event) => {
+      if (!els.regionMulti.contains(event.target)) els.regionMulti.classList.remove("open");
       if (!els.baseMulti.contains(event.target)) els.baseMulti.classList.remove("open");
       if (!els.ownerMulti.contains(event.target)) els.ownerMulti.classList.remove("open");
     });
@@ -1418,6 +1461,7 @@
         filename: "Detalhes_AWB.csv",
         headers: [
           "AWB",
+          "Região",
           "Faixa Acima de SLA+8",
           "Backlog (D)",
           "No tracking (D)",
@@ -1430,6 +1474,7 @@
         ],
         rows: state.filtered.map((row) => [
           row.awb,
+          row.region,
           row.sla,
           row.backlog,
           row.noTracking,
@@ -1465,10 +1510,10 @@
 
     function getFilterText() {
       const parts = [
+        `Região=${formatSelectedFilter(state.selectedRegions, "Todas")}`,
         `Base=${formatSelectedFilter(state.selectedBases, "Todas")}`,
         `Especialista=${formatSelectedFilter(state.selectedOwners, "Todos")}`,
         `Faixa Acima de SLA+8=${els.slaFilter.value || "Todas"}`,
-        `AWB=${els.searchInput.value || "Todos"}`
       ];
       return parts.join("; ");
     }
