@@ -926,14 +926,32 @@
       els.adminBackdrop.classList.remove("open");
     }
 
-    function unlockAdmin() {
-      if (els.adminPassword.value.trim()) {
-        els.adminLogin.style.display = "none";
-        els.adminUpload.classList.add("visible");
-        setTimeout(() => els.fileInput.focus(), 0);
-      } else {
+    async function unlockAdmin() {
+      if (!els.adminPassword.value.trim()) {
         setDataStatus("请输入后台密码 / Informe a senha.");
+        return;
       }
+
+      if (isOnlineApp()) {
+        try {
+          setDataStatus("正在验证密码 / Validando senha...");
+          const response = await fetch("/api/auth", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({password: els.adminPassword.value})
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(payload.error || "Senha incorreta / 密码不正确");
+        } catch (error) {
+          setDataStatus(error.message);
+          return;
+        }
+      }
+
+      els.adminLogin.style.display = "none";
+      els.adminUpload.classList.add("visible");
+      setDataStatus("密码验证通过 / Senha validada.");
+      setTimeout(() => els.fileInput.focus(), 0);
     }
 
     function refreshFilters() {
