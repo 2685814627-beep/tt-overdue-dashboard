@@ -875,11 +875,31 @@
 
     function toNumber(value) {
       if (typeof value === "number") return value;
-      const cleaned = String(value || "")
+      let cleaned = String(value || "")
         .replace(/\s/g, "")
         .replace("R$", "")
-        .replace(/\./g, "")
-        .replace(",", ".");
+        .replace(/[^\d,.-]/g, "");
+      if (!cleaned) return 0;
+
+      const lastComma = cleaned.lastIndexOf(",");
+      const lastDot = cleaned.lastIndexOf(".");
+
+      if (lastComma >= 0 && lastDot >= 0) {
+        const decimalSeparator = lastComma > lastDot ? "," : ".";
+        const thousandSeparator = decimalSeparator === "," ? "." : ",";
+        cleaned = cleaned
+          .replaceAll(thousandSeparator, "")
+          .replace(decimalSeparator, ".");
+      } else if (lastComma >= 0 || lastDot >= 0) {
+        const separator = lastComma >= 0 ? "," : ".";
+        const separatorIndex = lastComma >= 0 ? lastComma : lastDot;
+        const decimals = cleaned.length - separatorIndex - 1;
+        if (decimals > 0 && decimals <= 2) {
+          cleaned = cleaned.replace(separator, ".");
+        } else {
+          cleaned = cleaned.replaceAll(separator, "");
+        }
+      }
       const num = Number(cleaned);
       return Number.isFinite(num) ? num : 0;
     }
