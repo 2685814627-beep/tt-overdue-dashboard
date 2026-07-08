@@ -118,6 +118,7 @@
     }
 
     input[type="file"],
+    input[type="date"],
     select,
     input[type="search"] {
       width: 100%;
@@ -133,6 +134,7 @@
     }
 
     input[type="file"]:focus,
+    input[type="date"]:focus,
     select:focus,
     input[type="search"]:focus,
     input[type="password"]:focus {
@@ -341,6 +343,10 @@
       margin: 0;
       font-size: 17px;
       line-height: 1.3;
+    }
+
+    .panel-wide {
+      grid-column: 1 / -1;
     }
 
     .export-small {
@@ -717,6 +723,13 @@
         </div>
         <div class="chart-wrap"><canvas id="valueByOwnerChart"></canvas></div>
       </div>
+      <div class="panel panel-wide">
+        <div class="panel-head">
+          <h2>每日趋势 / Tendência diária</h2>
+          <button class="export-small" data-export="trend" type="button">Exportar CSV</button>
+        </div>
+        <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+      </div>
     </section>
 
     <section class="table-panel">
@@ -770,6 +783,9 @@
       </div>
 
       <div id="adminUpload" class="admin-section admin-upload">
+        <label for="reportDate">数据日期 / Data do relatório</label>
+        <input id="reportDate" type="date">
+        <div class="hint">用于保存每日快照和趋势图。默认今天，可手动修改。</div>
         <label for="fileInput">上传 Excel / Carregar Excel</label>
         <input id="fileInput" type="file" accept=".xlsx,.xls,.csv">
         <div class="hint">需要包含 AWB、Backlog (D)、No tracking (D)、base、Especialista、valor 等字段。</div>
@@ -794,6 +810,7 @@
     const state = {
       rows: [],
       filtered: [],
+      history: [],
       charts: {},
       selectedRegions: new Set(),
       selectedBases: new Set(),
@@ -802,6 +819,7 @@
 
     const els = {
       fileInput: document.getElementById("fileInput"),
+      reportDate: document.getElementById("reportDate"),
       regionMulti: document.getElementById("regionMulti"),
       baseMulti: document.getElementById("baseMulti"),
       ownerMulti: document.getElementById("ownerMulti"),
@@ -857,11 +875,31 @@
 
     function toNumber(value) {
       if (typeof value === "number") return value;
-      const cleaned = String(value || "")
+      let cleaned = String(value || "")
         .replace(/\s/g, "")
         .replace("R$", "")
-        .replace(/\./g, "")
-        .replace(",", ".");
+        .replace(/[^\d,.-]/g, "");
+      if (!cleaned) return 0;
+
+      const lastComma = cleaned.lastIndexOf(",");
+      const lastDot = cleaned.lastIndexOf(".");
+
+      if (lastComma >= 0 && lastDot >= 0) {
+        const decimalSeparator = lastComma > lastDot ? "," : ".";
+        const thousandSeparator = decimalSeparator === "," ? "." : ",";
+        cleaned = cleaned
+          .replaceAll(thousandSeparator, "")
+          .replace(decimalSeparator, ".");
+      } else if (lastComma >= 0 || lastDot >= 0) {
+        const separator = lastComma >= 0 ? "," : ".";
+        const separatorIndex = lastComma >= 0 ? lastComma : lastDot;
+        const decimals = cleaned.length - separatorIndex - 1;
+        if (decimals > 0 && decimals <= 2) {
+          cleaned = cleaned.replace(separator, ".");
+        } else {
+          cleaned = cleaned.replaceAll(separator, "");
+        }
+      }
       const num = Number(cleaned);
       return Number.isFinite(num) ? num : 0;
     }
@@ -1237,17 +1275,93 @@
         {currency: true}
       );
 
+      renderTrendChart();
       renderTable(rows);
+    }
+
+    function renderTrendChart() {
+      if (!window.Chart) return;
+      if (state.charts.trendChart) state.charts.trendChart.destroy();
+
+      const labels = state.history.map((item) => item.reportDate);
+      const ctx = document.getElementById("trendChart");
+      state.charts.trendChart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "SLA+8",
+              data: state.history.map((item) => item.sla8 || 0),
+              borderColor: "#facc15",
+              backgroundColor: "rgba(250, 204, 21, 0.14)",
+              tension: 0.28
+            },
+            {
+              label: "SLA+9",
+              data: state.history.map((item) => item.sla9 || 0),
+              borderColor: "#f79009",
+              backgroundColor: "rgba(247, 144, 9, 0.14)",
+              tension: 0.28
+            },
+            {
+              label: "SLA+10",
+              data: state.history.map((item) => item.sla10 || 0),
+              borderColor: "#d92d20",
+              backgroundColor: "rgba(217, 45, 32, 0.12)",
+              tension: 0.28
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {display: true}
+          },
+          scales: {
+            y: {beginAtZero: true, ticks: {precision: 0}}
+          }
+        }
+      });
     }
 
     function isOnlineApp() {
       return window.location.protocol !== "file:";
     }
 
+    function todayIsoDate() {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    function summarizeRows(rows) {
+      return rows.reduce((summary, row) => {
+        if (row.sla === "SLA+8") summary.sla8 += 1;
+        if (row.sla === "SLA+9") summary.sla9 += 1;
+        if (row.sla === "SLA+10") summary.sla10 += 1;
+        summary.total += 1;
+        summary.valorTotal += row.value || 0;
+        return summary;
+      }, {total: 0, sla8: 0, sla9: 0, sla10: 0, valorTotal: 0});
+    }
+
+    function setLocalHistory(reportDate, rows) {
+      const summary = summarizeRows(rows);
+      const next = {
+        reportDate,
+        ...summary
+      };
+      state.history = [
+        ...state.history.filter((item) => item.reportDate !== reportDate),
+        next
+      ].sort((a, b) => String(a.reportDate || "").localeCompare(String(b.reportDate || "")));
+    }
+
     function hydrateRows(rows) {
       state.rows = rows
         .map((row) => ({
           awb: String(row.awb || "").trim(),
+          region: String(row.region || "").trim() || "Sem região / 无区域",
           backlog: toNumber(row.backlog),
           noTracking: toNumber(row.noTracking),
           date: String(row.date || "").trim(),
@@ -1274,10 +1388,12 @@
         const response = await fetch("/api/data", {cache: "no-store"});
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const payload = await response.json();
+        state.history = Array.isArray(payload.history) ? payload.history : [];
         if (payload.rows && payload.rows.length) {
           hydrateRows(payload.rows);
           const time = payload.publishedAt ? new Date(payload.publishedAt).toLocaleString("pt-BR") : "";
-          setPublicDataStatus(`已发布 ${payload.rows.length} 条 / ${payload.rows.length} publicados ${time}`);
+          const dateText = payload.reportDate ? ` ${payload.reportDate}` : "";
+          setPublicDataStatus(`已发布 ${payload.rows.length} 条${dateText} / ${payload.rows.length} publicados ${time}`);
           setDataStatus(`当前线上数据：${payload.fileName || "latest"} / Dados online carregados.`);
         } else {
           setPublicDataStatus("暂无线上数据 / Sem dados publicados");
@@ -1289,8 +1405,11 @@
     }
 
     async function publishRows(fileName) {
+      const reportDate = els.reportDate.value || todayIsoDate();
       if (!isOnlineApp()) {
+        setLocalHistory(reportDate, state.rows);
         setDataStatus(`已加载 ${state.rows.length} 条本地数据。上线后会自动发布到服务器。`);
+        renderTrendChart();
         return;
       }
 
@@ -1299,6 +1418,7 @@
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
           password: els.adminPassword.value,
+          reportDate,
           fileName,
           rows: state.rows
         })
@@ -1309,7 +1429,8 @@
         throw new Error(payload.error || `HTTP ${response.status}`);
       }
 
-      setPublicDataStatus(`已发布 ${payload.rows} 条 / ${payload.rows} publicados`);
+      setLocalHistory(payload.reportDate || reportDate, state.rows);
+      setPublicDataStatus(`已发布 ${payload.rows} 条 ${payload.reportDate || reportDate} / ${payload.rows} publicados`);
       setDataStatus(`发布成功：${payload.rows} 条数据 / Publicado com sucesso.`);
     }
 
@@ -1531,6 +1652,21 @@
         };
       }
 
+      if (type === "trend") {
+        return {
+          filename: "Tendencia_diaria_SLA.csv",
+          headers: ["Data", "SLA+8", "SLA+9", "SLA+10", "Total", "Valor Total"],
+          rows: state.history.map((item) => [
+            item.reportDate,
+            item.sla8 || 0,
+            item.sla9 || 0,
+            item.sla10 || 0,
+            item.total || 0,
+            Number(item.valorTotal || 0).toFixed(2)
+          ])
+        };
+      }
+
       return {
         filename: "Detalhes_AWB.csv",
         headers: [
@@ -1600,6 +1736,7 @@
       button.addEventListener("click", () => downloadCsv(button.dataset.export));
     });
 
+    els.reportDate.value = todayIsoDate();
     render();
     loadPublishedData();
   </script>
