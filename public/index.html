@@ -1462,6 +1462,9 @@
       const points = buildTrendPoints();
       els.trendTitle.textContent = meta.title;
       const ctx = document.getElementById("trendChart");
+      const gradient = ctx.getContext("2d").createLinearGradient(0, 0, 0, 280);
+      gradient.addColorStop(0, "rgba(0, 113, 227, 0.22)");
+      gradient.addColorStop(1, "rgba(0, 113, 227, 0.03)");
       state.charts.trendChart = new Chart(ctx, {
         type: "line",
         data: {
@@ -1470,26 +1473,59 @@
             {
               label: meta.title,
               data: points.map((item) => item.value),
-              borderColor: meta.color,
-              backgroundColor: `${meta.color}22`,
-              tension: 0.28
+              borderColor: "#1f6fff",
+              backgroundColor: gradient,
+              borderWidth: 2,
+              fill: true,
+              tension: 0,
+              pointBackgroundColor: "#ff3b30",
+              pointBorderColor: "#ffffff",
+              pointBorderWidth: 2,
+              pointRadius: 3,
+              pointHoverRadius: 5
             }
           ]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          interaction: {
+            mode: "index",
+            intersect: false
+          },
+          elements: {
+            line: {
+              capBezierPoints: false
+            }
+          },
           plugins: {
             legend: {display: false},
             tooltip: {
+              backgroundColor: "rgba(29, 29, 31, 0.88)",
+              padding: 10,
+              displayColors: false,
               callbacks: meta.currency ? {
                 label: (context) => formatMoney(context.raw)
               } : {}
             }
           },
           scales: {
+            x: {
+              grid: {
+                display: false
+              },
+              border: {
+                color: "rgba(0, 0, 0, 0.08)"
+              }
+            },
             y: {
               beginAtZero: true,
+              grid: {
+                color: "rgba(0, 0, 0, 0.08)"
+              },
+              border: {
+                display: false
+              },
               ticks: {
                 precision: meta.currency ? undefined : 0,
                 callback: meta.currency ? (value) => formatMoney(value) : undefined
