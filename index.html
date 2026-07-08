@@ -1,0 +1,1724 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TT 超期包裹看板 / Painel TT Acima de SLA+8</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #f5f5f7;
+      --panel: rgba(255, 255, 255, 0.82);
+      --panel-solid: #ffffff;
+      --text: #1d1d1f;
+      --muted: #6e6e73;
+      --line: rgba(0, 0, 0, 0.09);
+      --blue: #0071e3;
+      --blue-soft: #e8f2ff;
+      --red: #d92d20;
+      --orange: #f79009;
+      --yellow: #facc15;
+      --green: #12b76a;
+      --shadow: 0 18px 50px rgba(0, 0, 0, 0.08);
+      --shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.06);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 15% -10%, rgba(0, 113, 227, 0.12), transparent 28%),
+        radial-gradient(circle at 90% 8%, rgba(18, 183, 106, 0.10), transparent 24%),
+        var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+    }
+
+    header {
+      background: rgba(251, 251, 253, 0.72);
+      backdrop-filter: saturate(180%) blur(18px);
+      -webkit-backdrop-filter: saturate(180%) blur(18px);
+      border-bottom: 1px solid var(--line);
+      padding: 18px 26px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .header-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      max-width: 1500px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 26px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      margin-top: 6px;
+      font-size: 14px;
+    }
+
+    main {
+      padding: 22px 26px 34px;
+      max-width: 1500px;
+      margin: 0 auto;
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(170px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+      align-items: end;
+      position: relative;
+      z-index: 30;
+    }
+
+    .control,
+    .panel,
+    .metric {
+      background: var(--panel);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow-soft);
+    }
+
+    .control {
+      padding: 14px;
+      min-width: 0;
+      position: relative;
+    }
+
+    .control:has(.multi-filter.open) {
+      z-index: 60;
+    }
+
+    label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    input[type="file"],
+    input[type="date"],
+    select,
+    input[type="search"] {
+      width: 100%;
+      min-height: 42px;
+      border: 1px solid rgba(0, 0, 0, 0.10);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.78);
+      padding: 9px 12px;
+      color: var(--text);
+      font: inherit;
+      outline: none;
+      transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+    }
+
+    input[type="file"]:focus,
+    input[type="date"]:focus,
+    select:focus,
+    input[type="search"]:focus,
+    input[type="password"]:focus {
+      border-color: rgba(0, 113, 227, 0.48);
+      box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.12);
+      background: #ffffff;
+    }
+
+    .multi-filter {
+      position: relative;
+    }
+
+    .multi-button {
+      width: 100%;
+      min-height: 42px;
+      justify-content: space-between;
+      text-align: left;
+      border: 1px solid rgba(0, 0, 0, 0.10);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.78);
+      color: var(--text);
+      box-shadow: none;
+      padding: 9px 12px;
+      font-weight: 500;
+    }
+
+    .multi-button::after {
+      content: "⌄";
+      float: right;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .multi-popover {
+      display: none;
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: calc(100% + 8px);
+      z-index: 100;
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: saturate(180%) blur(18px);
+      -webkit-backdrop-filter: saturate(180%) blur(18px);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      padding: 10px;
+    }
+
+    .multi-filter.open .multi-popover {
+      display: block;
+    }
+
+    .multi-search {
+      margin-bottom: 8px;
+    }
+
+    .multi-options {
+      max-height: 240px;
+      overflow: auto;
+      display: grid;
+      gap: 4px;
+    }
+
+    .multi-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px;
+      border-radius: 10px;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 13px;
+      margin: 0;
+    }
+
+    .multi-option:hover {
+      background: rgba(0, 113, 227, 0.08);
+    }
+
+    .multi-option input {
+      accent-color: var(--blue);
+    }
+
+    .multi-footer {
+      display: flex;
+      justify-content: flex-end;
+      padding-top: 8px;
+      margin-top: 8px;
+      border-top: 1px solid var(--line);
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 7px;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(150px, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    button {
+      border: 1px solid var(--blue);
+      background: var(--blue);
+      color: #ffffff;
+      border-radius: 999px;
+      min-height: 38px;
+      padding: 8px 15px;
+      cursor: pointer;
+      font-weight: 700;
+      font: inherit;
+      box-shadow: 0 8px 18px rgba(0, 113, 227, 0.22);
+      transition: transform 140ms ease, filter 140ms ease, box-shadow 140ms ease;
+    }
+
+    button + button {
+      background: rgba(255, 255, 255, 0.76);
+      color: var(--blue);
+      box-shadow: none;
+    }
+
+    button:hover {
+      filter: brightness(0.96);
+      transform: translateY(-1px);
+    }
+
+    .ghost-button {
+      border-color: rgba(0, 0, 0, 0.10);
+      background: rgba(255, 255, 255, 0.7);
+      color: var(--text);
+      box-shadow: none;
+    }
+
+    .admin-button {
+      min-width: 98px;
+      white-space: nowrap;
+    }
+
+    .metric {
+      padding: 18px;
+      transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease;
+    }
+
+    .metric:hover {
+      background: rgba(232, 242, 255, 0.92);
+      border-color: rgba(0, 113, 227, 0.58);
+      box-shadow: 0 18px 42px rgba(0, 113, 227, 0.18);
+      transform: translateY(-4px);
+    }
+
+    .metric-title {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 7px;
+      transition: color 180ms ease;
+    }
+
+    .metric-value {
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: 0;
+      transition: color 180ms ease;
+    }
+
+    .metric-note {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 4px;
+      transition: color 180ms ease;
+    }
+
+    .metric:hover .metric-title,
+    .metric:hover .metric-note {
+      color: #0057b8;
+    }
+
+    .metric:hover .metric-value {
+      color: var(--blue);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(280px, 1fr));
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .panel {
+      padding: 18px;
+      min-width: 0;
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .panel h2 {
+      margin: 0;
+      font-size: 17px;
+      line-height: 1.3;
+    }
+
+    .panel-wide {
+      grid-column: 1 / -1;
+    }
+
+    .export-small {
+      min-height: 30px;
+      padding: 5px 10px;
+      font-size: 12px;
+      white-space: nowrap;
+      background: rgba(255, 255, 255, 0.74);
+      color: var(--blue);
+      border-color: rgba(0, 113, 227, 0.28);
+      box-shadow: none;
+    }
+
+    .chart-wrap {
+      height: 280px;
+      position: relative;
+    }
+
+    .table-panel {
+      background: var(--panel);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: var(--shadow-soft);
+    }
+
+    .table-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .table-header h2 {
+      margin: 0;
+      font-size: 16px;
+    }
+
+    .table-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .table-scroll {
+      overflow: auto;
+      max-height: 520px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1180px;
+    }
+
+    th,
+    td {
+      padding: 10px 9px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      white-space: nowrap;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: rgba(245, 245, 247, 0.96);
+      z-index: 1;
+      font-size: 12px;
+      color: #515154;
+    }
+
+    tr:hover td {
+      background: rgba(0, 113, 227, 0.05);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 64px;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    .sla8 {
+      background: #fff6c7;
+      color: #7a5b00;
+    }
+
+    .sla9 {
+      background: #fff0d9;
+      color: #9a4b00;
+    }
+
+    .sla10 {
+      background: #ffe4e2;
+      color: #b42318;
+    }
+
+    .empty {
+      padding: 28px;
+      text-align: center;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.68);
+      border: 1px dashed var(--line);
+      border-radius: 18px;
+      margin-bottom: 16px;
+    }
+
+    .error {
+      display: none;
+      background: #fff1f0;
+      border: 1px solid #ffccc7;
+      color: #a8071a;
+      border-radius: 14px;
+      padding: 12px 14px;
+      margin-bottom: 16px;
+    }
+
+    .admin-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      background: rgba(0, 0, 0, 0.22);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      padding: 22px;
+    }
+
+    .admin-backdrop.open {
+      display: grid;
+      place-items: center;
+    }
+
+    .admin-panel {
+      width: min(560px, 100%);
+      background: rgba(255, 255, 255, 0.88);
+      backdrop-filter: saturate(180%) blur(22px);
+      -webkit-backdrop-filter: saturate(180%) blur(22px);
+      border: 1px solid rgba(255, 255, 255, 0.72);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      padding: 22px;
+    }
+
+    .admin-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+
+    .admin-head h2 {
+      margin: 0;
+      font-size: 22px;
+    }
+
+    .admin-head p {
+      margin: 6px 0 0;
+      color: var(--muted);
+    }
+
+    .admin-section {
+      background: rgba(245, 245, 247, 0.74);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px;
+      margin-top: 12px;
+    }
+
+    .admin-login {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr auto;
+      align-items: end;
+    }
+
+    .admin-login input {
+      width: 100%;
+      min-height: 42px;
+      border: 1px solid rgba(0, 0, 0, 0.10);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.8);
+      padding: 9px 12px;
+      font: inherit;
+      outline: none;
+    }
+
+    .admin-upload {
+      display: none;
+    }
+
+    .admin-upload.visible {
+      display: block;
+    }
+
+    .data-status {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 8px;
+    }
+
+    @media (max-width: 1100px) {
+      .toolbar,
+      .metrics,
+      .grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 680px) {
+      header,
+      main {
+        padding-left: 14px;
+        padding-right: 14px;
+      }
+
+      .toolbar,
+      .metrics,
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .table-header {
+        align-items: stretch;
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div>
+        <h1>TT 超期包裹看板 / Painel TT Acima de SLA+8</h1>
+        <div class="subtitle">
+          TT 超期包裹跟进视图 / Visão de acompanhamento de pacotes acima de SLA+8
+          <span id="publicDataStatus">本地模式 / Modo local</span>
+        </div>
+      </div>
+      <button id="adminOpen" class="ghost-button admin-button" type="button">后台 / Admin</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="toolbar" aria-label="筛选器">
+      <div class="control">
+        <label for="regionMenuButton">区域 / Região</label>
+        <div id="regionMulti" class="multi-filter">
+          <button id="regionMenuButton" class="multi-button" type="button">全部 / Todas</button>
+          <div class="multi-popover">
+            <input id="regionSearch" class="multi-search" type="search" placeholder="搜索区域 / Buscar região">
+            <div id="regionOptions" class="multi-options"></div>
+            <div class="multi-footer">
+              <button class="export-small" data-clear-filter="region" type="button">Limpar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="control">
+        <label for="ownerMenuButton">负责人 / Especialista</label>
+        <div id="ownerMulti" class="multi-filter">
+          <button id="ownerMenuButton" class="multi-button" type="button">全部 / Todos</button>
+          <div class="multi-popover">
+            <input id="ownerSearch" class="multi-search" type="search" placeholder="搜索负责人 / Buscar especialista">
+            <div id="ownerOptions" class="multi-options"></div>
+            <div class="multi-footer">
+              <button class="export-small" data-clear-filter="owner" type="button">Limpar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="control">
+        <label for="baseMenuButton">网点 / Base</label>
+        <div id="baseMulti" class="multi-filter">
+          <button id="baseMenuButton" class="multi-button" type="button">全部 / Todas</button>
+          <div class="multi-popover">
+            <input id="baseSearch" class="multi-search" type="search" placeholder="搜索网点 / Buscar base">
+            <div id="baseOptions" class="multi-options"></div>
+            <div class="multi-footer">
+              <button class="export-small" data-clear-filter="base" type="button">Limpar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="control">
+        <label for="slaFilter">超期分段 / Faixa Acima de SLA+8</label>
+        <select id="slaFilter">
+          <option value="">全部 / Todas</option>
+          <option value="SLA+8">SLA+8</option>
+          <option value="SLA+9">SLA+9</option>
+          <option value="SLA+10">SLA+10</option>
+        </select>
+      </div>
+    </section>
+
+    <div id="errorBox" class="error"></div>
+    <div id="emptyState" class="empty">暂无数据。请由负责人进入后台上传 Excel。 / Sem dados. O responsável deve carregar o Excel no Admin.</div>
+
+    <section class="metrics" aria-label="核心指标">
+      <div class="metric">
+        <div class="metric-title">超期总单量 / Total Acima de SLA+8</div>
+        <div id="totalSla" class="metric-value">0</div>
+        <div class="metric-note">Backlog ≥ 8</div>
+      </div>
+      <div class="metric">
+        <div class="metric-title">SLA+8 / Total Acima de SLA+8</div>
+        <div id="sla8Count" class="metric-value">0</div>
+        <div class="metric-note">Backlog = 8</div>
+      </div>
+      <div class="metric">
+        <div class="metric-title">SLA+9 / Total Acima de SLA+9</div>
+        <div id="sla9Count" class="metric-value">0</div>
+        <div class="metric-note">Backlog = 9</div>
+      </div>
+      <div class="metric">
+        <div class="metric-title">SLA+10 / Total Acima de SLA+10</div>
+        <div id="sla10Count" class="metric-value">0</div>
+        <div class="metric-note">Backlog ≥ 10</div>
+      </div>
+      <div class="metric">
+        <div class="metric-title">总金额 / Valor Total</div>
+        <div id="totalValue" class="metric-value">R$ 0</div>
+        <div class="metric-note">当前筛选结果</div>
+      </div>
+      <div class="metric">
+        <div class="metric-title">最大 No Tracking / Maior No Tracking</div>
+        <div id="maxNoTracking" class="metric-value">0</div>
+        <div class="metric-note">天 / dias</div>
+      </div>
+    </section>
+
+    <section class="grid" aria-label="图表">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>按网点超期单量 / Acima de SLA+8 por Base</h2>
+          <button class="export-small" data-export="base" type="button">Exportar CSV</button>
+        </div>
+        <div class="chart-wrap"><canvas id="baseChart"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>按负责人超期单量 / Acima de SLA+8 por Especialista</h2>
+          <button class="export-small" data-export="owner" type="button">Exportar CSV</button>
+        </div>
+        <div class="chart-wrap"><canvas id="ownerChart"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>超期分段 / Faixa Acima de SLA+8</h2>
+          <button class="export-small" data-export="sla" type="button">Exportar CSV</button>
+        </div>
+        <div class="chart-wrap"><canvas id="slaChart"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>按负责人金额 / Valor por Especialista</h2>
+          <button class="export-small" data-export="ownerValue" type="button">Exportar CSV</button>
+        </div>
+        <div class="chart-wrap"><canvas id="valueByOwnerChart"></canvas></div>
+      </div>
+      <div class="panel panel-wide">
+        <div class="panel-head">
+          <h2>每日趋势 / Tendência diária</h2>
+          <button class="export-small" data-export="trend" type="button">Exportar CSV</button>
+        </div>
+        <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+      </div>
+    </section>
+
+    <section class="table-panel">
+      <div class="table-header">
+        <h2>AWB 明细 / Detalhes AWB</h2>
+        <div class="table-actions">
+          <button class="export-small" data-export="details" type="button">Exportar CSV</button>
+          <div id="tableCount" class="hint">0 条 / linhas</div>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>AWB</th>
+              <th>区域 / Região</th>
+              <th>超期分段 / Faixa</th>
+              <th>Backlog (D)</th>
+              <th>No tracking (D)</th>
+              <th>最后扫描日期 / Data</th>
+              <th>最后扫描类型 / Tipo</th>
+              <th>网点 / Base</th>
+              <th>负责人 / Especialista</th>
+              <th>金额 / Valor</th>
+              <th>建议动作 / Ação Sugerida</th>
+            </tr>
+          </thead>
+          <tbody id="detailBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <div id="adminBackdrop" class="admin-backdrop" role="dialog" aria-modal="true" aria-labelledby="adminTitle">
+    <div class="admin-panel">
+      <div class="admin-head">
+        <div>
+          <h2 id="adminTitle">后台数据管理 / Administração</h2>
+          <p>上传入口只放在这里，主页面给网管看时会更干净。</p>
+        </div>
+        <button id="adminClose" class="ghost-button" type="button">关闭 / Fechar</button>
+      </div>
+
+      <div id="adminLogin" class="admin-section admin-login">
+        <div>
+          <label for="adminPassword">后台密码 / Senha</label>
+          <input id="adminPassword" type="password" placeholder="输入后台密码">
+        </div>
+        <button id="adminUnlock" type="button">进入 / Entrar</button>
+        <div class="hint">在线版会在发布数据时校验后台密码。测试默认密码：8888。</div>
+      </div>
+
+      <div id="adminUpload" class="admin-section admin-upload">
+        <label for="reportDate">数据日期 / Data do relatório</label>
+        <input id="reportDate" type="date">
+        <div class="hint">用于保存每日快照和趋势图。默认今天，可手动修改。</div>
+        <label for="fileInput">上传 Excel / Carregar Excel</label>
+        <input id="fileInput" type="file" accept=".xlsx,.xls,.csv">
+        <div class="hint">需要包含 AWB、Backlog (D)、No tracking (D)、base、Especialista、valor 等字段。</div>
+        <div id="dataStatus" class="data-status">尚未上传数据 / Nenhum arquivo carregado.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const fieldMap = {
+      region: ["Região", "região", "regiao", "Region", "region", "区域", "Área", "Area", "área", "area", "regional", "Regional"],
+      awb: ["AWB", "awb"],
+      backlog: ["Backlog (D)", "Backlog", "backlog"],
+      noTracking: ["No tracking (D)", "No Tracking (D)", "No tracking", "no tracking"],
+      date: ["data da última bipagem", "Data da última bipagem", "data da ultima bipagem"],
+      type: ["o tipo da última bipagem", "O tipo da última bipagem", "o tipo da ultima bipagem"],
+      base: ["base da última bipagem", "Base da última bipagem", "base da ultima bipagem"],
+      owner: ["Especialista", "especialista"],
+      value: ["valor", "Valor"]
+    };
+
+    const state = {
+      rows: [],
+      filtered: [],
+      history: [],
+      charts: {},
+      selectedRegions: new Set(),
+      selectedBases: new Set(),
+      selectedOwners: new Set()
+    };
+
+    const els = {
+      fileInput: document.getElementById("fileInput"),
+      reportDate: document.getElementById("reportDate"),
+      regionMulti: document.getElementById("regionMulti"),
+      baseMulti: document.getElementById("baseMulti"),
+      ownerMulti: document.getElementById("ownerMulti"),
+      regionMenuButton: document.getElementById("regionMenuButton"),
+      baseMenuButton: document.getElementById("baseMenuButton"),
+      ownerMenuButton: document.getElementById("ownerMenuButton"),
+      regionSearch: document.getElementById("regionSearch"),
+      baseSearch: document.getElementById("baseSearch"),
+      ownerSearch: document.getElementById("ownerSearch"),
+      regionOptions: document.getElementById("regionOptions"),
+      baseOptions: document.getElementById("baseOptions"),
+      ownerOptions: document.getElementById("ownerOptions"),
+      slaFilter: document.getElementById("slaFilter"),
+      adminOpen: document.getElementById("adminOpen"),
+      adminClose: document.getElementById("adminClose"),
+      adminBackdrop: document.getElementById("adminBackdrop"),
+      adminLogin: document.getElementById("adminLogin"),
+      adminUpload: document.getElementById("adminUpload"),
+      adminPassword: document.getElementById("adminPassword"),
+      adminUnlock: document.getElementById("adminUnlock"),
+      dataStatus: document.getElementById("dataStatus"),
+      publicDataStatus: document.getElementById("publicDataStatus"),
+      errorBox: document.getElementById("errorBox"),
+      emptyState: document.getElementById("emptyState"),
+      totalSla: document.getElementById("totalSla"),
+      sla8Count: document.getElementById("sla8Count"),
+      sla9Count: document.getElementById("sla9Count"),
+      sla10Count: document.getElementById("sla10Count"),
+      totalValue: document.getElementById("totalValue"),
+      maxNoTracking: document.getElementById("maxNoTracking"),
+      tableCount: document.getElementById("tableCount"),
+      detailBody: document.getElementById("detailBody")
+    };
+
+    function normalizeKey(value) {
+      return String(value || "").trim().toLowerCase();
+    }
+
+    function findValue(raw, keys) {
+      for (const key of keys) {
+        if (Object.prototype.hasOwnProperty.call(raw, key)) return raw[key];
+      }
+      const normalized = Object.entries(raw).reduce((acc, [key, value]) => {
+        acc[normalizeKey(key)] = value;
+        return acc;
+      }, {});
+      for (const key of keys) {
+        const found = normalized[normalizeKey(key)];
+        if (found !== undefined) return found;
+      }
+      return "";
+    }
+
+    function toNumber(value) {
+      if (typeof value === "number") return value;
+      const cleaned = String(value || "")
+        .replace(/\s/g, "")
+        .replace("R$", "")
+        .replace(/\./g, "")
+        .replace(",", ".");
+      const num = Number(cleaned);
+      return Number.isFinite(num) ? num : 0;
+    }
+
+    function formatDate(value) {
+      if (!value) return "";
+      if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return value.toISOString().slice(0, 10);
+      }
+      if (typeof value === "number") {
+        const date = XLSX.SSF.parse_date_code(value);
+        if (date) {
+          return `${date.y}-${String(date.m).padStart(2, "0")}-${String(date.d).padStart(2, "0")}`;
+        }
+      }
+      return String(value).trim();
+    }
+
+    function getSla(backlog) {
+      if (backlog >= 10) return "SLA+10";
+      if (backlog === 9) return "SLA+9";
+      if (backlog === 8) return "SLA+8";
+      return "Fora SLA";
+    }
+
+    function getAction(type) {
+      const text = normalizeKey(type);
+      if (text === "unseal vehicle") {
+        return "核查车辆拆封后是否未继续操作 / Verificar continuidade após abertura do veículo";
+      }
+      if (text === "recebido") {
+        return "催网点安排下一步扫描或派送 / Cobrar próximo scan ou entrega";
+      }
+      if (text === "em rota de entrega") {
+        return "跟进派送结果 / Acompanhar resultado da entrega";
+      }
+      return "核查最新物流状态 / Verificar status logístico atualizado";
+    }
+
+    function normalizeRow(raw) {
+      const backlog = toNumber(findValue(raw, fieldMap.backlog));
+      const noTracking = toNumber(findValue(raw, fieldMap.noTracking));
+      const type = String(findValue(raw, fieldMap.type) || "").trim();
+      return {
+        awb: String(findValue(raw, fieldMap.awb) || "").trim(),
+        region: String(findValue(raw, fieldMap.region) || "").trim() || "Sem região / 无区域",
+        backlog,
+        noTracking,
+        date: formatDate(findValue(raw, fieldMap.date)),
+        type,
+        base: String(findValue(raw, fieldMap.base) || "").trim() || "Sem base / 无网点",
+        owner: String(findValue(raw, fieldMap.owner) || "").trim() || "Sem especialista / 无负责人",
+        value: toNumber(findValue(raw, fieldMap.value)),
+        sla: getSla(backlog),
+        action: getAction(type)
+      };
+    }
+
+    function showError(message) {
+      els.errorBox.textContent = message;
+      els.errorBox.style.display = message ? "block" : "none";
+    }
+
+    function setDataStatus(message) {
+      els.dataStatus.textContent = message;
+    }
+
+    function setPublicDataStatus(message) {
+      els.publicDataStatus.textContent = message;
+    }
+
+    function openAdmin() {
+      els.adminBackdrop.classList.add("open");
+      setTimeout(() => els.adminPassword.focus(), 0);
+    }
+
+    function closeAdmin() {
+      els.adminBackdrop.classList.remove("open");
+    }
+
+    async function unlockAdmin() {
+      if (!els.adminPassword.value.trim()) {
+        setDataStatus("请输入后台密码 / Informe a senha.");
+        return;
+      }
+
+      if (isOnlineApp()) {
+        try {
+          setDataStatus("正在验证密码 / Validando senha...");
+          const response = await fetch("/api/auth", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({password: els.adminPassword.value})
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(payload.error || "Senha incorreta / 密码不正确");
+        } catch (error) {
+          setDataStatus(error.message);
+          return;
+        }
+      }
+
+      els.adminLogin.style.display = "none";
+      els.adminUpload.classList.add("visible");
+      setDataStatus("密码验证通过 / Senha validada.");
+      setTimeout(() => els.fileInput.focus(), 0);
+    }
+
+    function refreshFilters() {
+      const regions = [...new Set(state.rows.map((row) => row.region))].sort();
+      const bases = [...new Set(state.rows.map((row) => row.base))].sort();
+      const owners = [...new Set(state.rows.map((row) => row.owner))].sort();
+      state.selectedRegions = new Set([...state.selectedRegions].filter((value) => regions.includes(value)));
+      state.selectedBases = new Set([...state.selectedBases].filter((value) => bases.includes(value)));
+      state.selectedOwners = new Set([...state.selectedOwners].filter((value) => owners.includes(value)));
+      renderMultiFilter("region", regions);
+      renderMultiFilter("base", bases);
+      renderMultiFilter("owner", owners);
+      updateMultiButton("region");
+      updateMultiButton("base");
+      updateMultiButton("owner");
+    }
+
+    function getMultiConfig(type) {
+      if (type === "region") {
+        return {
+          values: [...new Set(state.rows.map((row) => row.region))].sort(),
+          selected: state.selectedRegions,
+          search: els.regionSearch,
+          options: els.regionOptions,
+          button: els.regionMenuButton,
+          emptyText: "全部 / Todas",
+          selectedText: "已选 {count} 个 / {count} regiões"
+        };
+      }
+      if (type === "base") {
+        return {
+          values: [...new Set(state.rows.map((row) => row.base))].sort(),
+          selected: state.selectedBases,
+          search: els.baseSearch,
+          options: els.baseOptions,
+          button: els.baseMenuButton,
+          emptyText: "全部 / Todas",
+          selectedText: "已选 {count} 个 / {count} bases"
+        };
+      }
+      return {
+        values: [...new Set(state.rows.map((row) => row.owner))].sort(),
+        selected: state.selectedOwners,
+        search: els.ownerSearch,
+        options: els.ownerOptions,
+        button: els.ownerMenuButton,
+        emptyText: "全部 / Todos",
+        selectedText: "已选 {count} 个 / {count} especialistas"
+      };
+    }
+
+    function renderMultiFilter(type, values) {
+      const config = getMultiConfig(type);
+      const keyword = normalizeKey(config.search.value);
+      const visibleValues = values.filter((value) => normalizeKey(value).includes(keyword));
+      config.options.innerHTML = "";
+
+      if (!visibleValues.length) {
+        const empty = document.createElement("div");
+        empty.className = "hint";
+        empty.textContent = "没有匹配结果 / Nenhum resultado";
+        config.options.appendChild(empty);
+        return;
+      }
+
+      visibleValues.forEach((value) => {
+        const label = document.createElement("label");
+        label.className = "multi-option";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = config.selected.has(value);
+        checkbox.value = value;
+        checkbox.addEventListener("change", () => {
+          if (checkbox.checked) {
+            config.selected.add(value);
+          } else {
+            config.selected.delete(value);
+          }
+          updateMultiButton(type);
+          applyFilters();
+        });
+        label.appendChild(checkbox);
+        label.appendChild(document.createTextNode(value));
+        config.options.appendChild(label);
+      });
+    }
+
+    function updateMultiButton(type) {
+      const config = getMultiConfig(type);
+      const count = config.selected.size;
+      config.button.textContent = count
+        ? config.selectedText.replaceAll("{count}", count)
+        : config.emptyText;
+    }
+
+    function applyFilters() {
+      const selectedRegions = state.selectedRegions;
+      const selectedBases = state.selectedBases;
+      const selectedOwners = state.selectedOwners;
+      const sla = els.slaFilter.value;
+
+      state.filtered = state.rows.filter((row) => {
+        const matchRegion = !selectedRegions.size || selectedRegions.has(row.region);
+        const matchBase = !selectedBases.size || selectedBases.has(row.base);
+        const matchOwner = !selectedOwners.size || selectedOwners.has(row.owner);
+        const matchSla = !sla || row.sla === sla;
+        return row.backlog >= 8 && matchRegion && matchBase && matchOwner && matchSla;
+      });
+
+      state.filtered.sort((a, b) => {
+        const slaRank = {"SLA+10": 3, "SLA+9": 2, "SLA+8": 1};
+        return (slaRank[b.sla] - slaRank[a.sla])
+          || (b.noTracking - a.noTracking)
+          || (b.value - a.value);
+      });
+
+      render();
+    }
+
+    function formatMoney(value) {
+      return new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "BRL"
+      }).format(value || 0);
+    }
+
+    function setMetric(id, value) {
+      els[id].textContent = value;
+    }
+
+    function countBy(rows, key) {
+      return rows.reduce((acc, row) => {
+        const label = row[key] || "Sem informação / 无信息";
+        acc[label] = (acc[label] || 0) + 1;
+        return acc;
+      }, {});
+    }
+
+    function sumBy(rows, key, valueKey) {
+      return rows.reduce((acc, row) => {
+        const label = row[key] || "Sem informação / 无信息";
+        acc[label] = (acc[label] || 0) + (row[valueKey] || 0);
+        return acc;
+      }, {});
+    }
+
+    function topEntries(map, limit = 10) {
+      return Object.entries(map)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit);
+    }
+
+    function renderChart(id, type, labels, data, colors, options = {}) {
+      if (!window.Chart) {
+        showError("图表库没有加载成功。KPI 和明细仍可使用；请确认电脑可以访问网络后刷新页面。");
+        return;
+      }
+      if (state.charts[id]) state.charts[id].destroy();
+      const ctx = document.getElementById(id);
+      state.charts[id] = new Chart(ctx, {
+        type,
+        data: {
+          labels,
+          datasets: [{
+            data,
+            backgroundColor: colors || "#1677c8",
+            borderWidth: 0,
+            borderRadius: type === "bar" ? 5 : 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          indexAxis: type === "bar" && id !== "slaChart" ? "y" : "x",
+          plugins: {
+            legend: { display: type === "doughnut" },
+            tooltip: {
+              enabled: true,
+              callbacks: options.currency ? {
+                label: (context) => `${context.label}: ${formatMoney(context.raw)}`
+              } : {}
+            }
+          },
+          scales: type === "doughnut" ? {} : {
+            x: {
+              beginAtZero: true,
+              ticks: {
+                precision: 0,
+                callback: options.currency ? (value) => formatMoney(value) : undefined
+              }
+            },
+            y: { ticks: { autoSkip: false } }
+          }
+        }
+      });
+    }
+
+    function renderMetrics(rows) {
+      const total = rows.length;
+      const sla8 = rows.filter((row) => row.sla === "SLA+8").length;
+      const sla9 = rows.filter((row) => row.sla === "SLA+9").length;
+      const sla10 = rows.filter((row) => row.sla === "SLA+10").length;
+      const value = rows.reduce((sum, row) => sum + row.value, 0);
+      const maxNoTracking = rows.reduce((max, row) => Math.max(max, row.noTracking), 0);
+
+      setMetric("totalSla", total);
+      setMetric("sla8Count", sla8);
+      setMetric("sla9Count", sla9);
+      setMetric("sla10Count", sla10);
+      setMetric("totalValue", formatMoney(value));
+      setMetric("maxNoTracking", maxNoTracking);
+    }
+
+    function renderTable(rows) {
+      els.tableCount.textContent = `${rows.length} 条 / linhas`;
+      els.detailBody.innerHTML = "";
+      rows.slice(0, 500).forEach((row) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${escapeHtml(row.awb)}</td>
+          <td>${escapeHtml(row.region)}</td>
+          <td><span class="badge ${row.sla.toLowerCase().replace("+", "")}">${row.sla}</span></td>
+          <td>${row.backlog}</td>
+          <td>${row.noTracking}</td>
+          <td>${escapeHtml(row.date)}</td>
+          <td>${escapeHtml(row.type)}</td>
+          <td>${escapeHtml(row.base)}</td>
+          <td>${escapeHtml(row.owner)}</td>
+          <td>${formatMoney(row.value)}</td>
+          <td>${escapeHtml(row.action)}</td>
+        `;
+        els.detailBody.appendChild(tr);
+      });
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function render() {
+      const rows = state.filtered;
+      els.emptyState.style.display = state.rows.length ? "none" : "block";
+      renderMetrics(rows);
+
+      const baseEntries = topEntries(countBy(rows, "base"), 10);
+      renderChart("baseChart", "bar", baseEntries.map(([k]) => k), baseEntries.map(([, v]) => v), "#1677c8");
+
+      const ownerEntries = topEntries(countBy(rows, "owner"), 10);
+      renderChart("ownerChart", "bar", ownerEntries.map(([k]) => k), ownerEntries.map(([, v]) => v), "#12b76a");
+
+      const slaMap = {"SLA+8": 0, "SLA+9": 0, "SLA+10": 0};
+      rows.forEach((row) => { slaMap[row.sla] = (slaMap[row.sla] || 0) + 1; });
+      renderChart("slaChart", "doughnut", Object.keys(slaMap), Object.values(slaMap), ["#facc15", "#f79009", "#d92d20"]);
+
+      const valueByOwnerEntries = topEntries(sumBy(rows, "owner", "value"), 10);
+      renderChart(
+        "valueByOwnerChart",
+        "bar",
+        valueByOwnerEntries.map(([k]) => k),
+        valueByOwnerEntries.map(([, v]) => v),
+        "#d92d20",
+        {currency: true}
+      );
+
+      renderTrendChart();
+      renderTable(rows);
+    }
+
+    function renderTrendChart() {
+      if (!window.Chart) return;
+      if (state.charts.trendChart) state.charts.trendChart.destroy();
+
+      const labels = state.history.map((item) => item.reportDate);
+      const ctx = document.getElementById("trendChart");
+      state.charts.trendChart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "SLA+8",
+              data: state.history.map((item) => item.sla8 || 0),
+              borderColor: "#facc15",
+              backgroundColor: "rgba(250, 204, 21, 0.14)",
+              tension: 0.28
+            },
+            {
+              label: "SLA+9",
+              data: state.history.map((item) => item.sla9 || 0),
+              borderColor: "#f79009",
+              backgroundColor: "rgba(247, 144, 9, 0.14)",
+              tension: 0.28
+            },
+            {
+              label: "SLA+10",
+              data: state.history.map((item) => item.sla10 || 0),
+              borderColor: "#d92d20",
+              backgroundColor: "rgba(217, 45, 32, 0.12)",
+              tension: 0.28
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {display: true}
+          },
+          scales: {
+            y: {beginAtZero: true, ticks: {precision: 0}}
+          }
+        }
+      });
+    }
+
+    function isOnlineApp() {
+      return window.location.protocol !== "file:";
+    }
+
+    function todayIsoDate() {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    function summarizeRows(rows) {
+      return rows.reduce((summary, row) => {
+        if (row.sla === "SLA+8") summary.sla8 += 1;
+        if (row.sla === "SLA+9") summary.sla9 += 1;
+        if (row.sla === "SLA+10") summary.sla10 += 1;
+        summary.total += 1;
+        summary.valorTotal += row.value || 0;
+        return summary;
+      }, {total: 0, sla8: 0, sla9: 0, sla10: 0, valorTotal: 0});
+    }
+
+    function setLocalHistory(reportDate, rows) {
+      const summary = summarizeRows(rows);
+      const next = {
+        reportDate,
+        ...summary
+      };
+      state.history = [
+        ...state.history.filter((item) => item.reportDate !== reportDate),
+        next
+      ].sort((a, b) => String(a.reportDate || "").localeCompare(String(b.reportDate || "")));
+    }
+
+    function hydrateRows(rows) {
+      state.rows = rows
+        .map((row) => ({
+          awb: String(row.awb || "").trim(),
+          region: String(row.region || "").trim() || "Sem região / 无区域",
+          backlog: toNumber(row.backlog),
+          noTracking: toNumber(row.noTracking),
+          date: String(row.date || "").trim(),
+          type: String(row.type || "").trim(),
+          base: String(row.base || "").trim() || "Sem base / 无网点",
+          owner: String(row.owner || "").trim() || "Sem especialista / 无负责人",
+          value: toNumber(row.value),
+          sla: row.sla || getSla(toNumber(row.backlog)),
+          action: row.action || getAction(row.type)
+        }))
+        .filter((row) => row.awb && row.backlog >= 8);
+      refreshFilters();
+      applyFilters();
+    }
+
+    async function loadPublishedData() {
+      if (!isOnlineApp()) {
+        setPublicDataStatus("本地模式 / Modo local");
+        return;
+      }
+
+      try {
+        setPublicDataStatus("正在加载线上数据 / Carregando dados publicados");
+        const response = await fetch("/api/data", {cache: "no-store"});
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        state.history = Array.isArray(payload.history) ? payload.history : [];
+        if (payload.rows && payload.rows.length) {
+          hydrateRows(payload.rows);
+          const time = payload.publishedAt ? new Date(payload.publishedAt).toLocaleString("pt-BR") : "";
+          const dateText = payload.reportDate ? ` ${payload.reportDate}` : "";
+          setPublicDataStatus(`已发布 ${payload.rows.length} 条${dateText} / ${payload.rows.length} publicados ${time}`);
+          setDataStatus(`当前线上数据：${payload.fileName || "latest"} / Dados online carregados.`);
+        } else {
+          setPublicDataStatus("暂无线上数据 / Sem dados publicados");
+        }
+      } catch (error) {
+        setPublicDataStatus("线上数据加载失败 / Falha ao carregar dados");
+        showError(`线上数据加载失败：${error.message}`);
+      }
+    }
+
+    async function publishRows(fileName) {
+      const reportDate = els.reportDate.value || todayIsoDate();
+      if (!isOnlineApp()) {
+        setLocalHistory(reportDate, state.rows);
+        setDataStatus(`已加载 ${state.rows.length} 条本地数据。上线后会自动发布到服务器。`);
+        renderTrendChart();
+        return;
+      }
+
+      const response = await fetch("/api/publish", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          password: els.adminPassword.value,
+          reportDate,
+          fileName,
+          rows: state.rows
+        })
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || `HTTP ${response.status}`);
+      }
+
+      setLocalHistory(payload.reportDate || reportDate, state.rows);
+      setPublicDataStatus(`已发布 ${payload.rows} 条 ${payload.reportDate || reportDate} / ${payload.rows} publicados`);
+      setDataStatus(`发布成功：${payload.rows} 条数据 / Publicado com sucesso.`);
+    }
+
+    function normalizeHeader(value) {
+      return String(value || "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\s+/g, " ");
+    }
+
+    function headerMatches(value, aliases) {
+      const normalized = normalizeHeader(value);
+      return aliases.some((alias) => normalizeHeader(alias) === normalized);
+    }
+
+    function scoreHeaderRow(row) {
+      const values = row.map(normalizeHeader);
+      const has = (aliases) => values.some((value) => aliases.some((alias) => normalizeHeader(alias) === value));
+      return [
+        fieldMap.awb,
+        fieldMap.backlog,
+        fieldMap.noTracking,
+        fieldMap.base,
+        fieldMap.owner,
+        fieldMap.value,
+        fieldMap.region
+      ].reduce((score, aliases) => score + (has(aliases) ? 1 : 0), 0);
+    }
+
+    function rowsFromSheet(sheetName, worksheet) {
+      const matrix = XLSX.utils.sheet_to_json(worksheet, {header: 1, defval: "", raw: false});
+      let bestIndex = -1;
+      let bestScore = 0;
+
+      matrix.forEach((row, index) => {
+        const score = scoreHeaderRow(row);
+        if (score > bestScore) {
+          bestScore = score;
+          bestIndex = index;
+        }
+      });
+
+      if (bestIndex < 0 || bestScore < 3) {
+        return {sheetName, rows: [], score: bestScore};
+      }
+
+      const headers = matrix[bestIndex].map((header, index) => {
+        const text = String(header || "").trim();
+        return text || `Column ${index + 1}`;
+      });
+
+      const rows = matrix.slice(bestIndex + 1)
+        .filter((row) => row.some((cell) => String(cell || "").trim()))
+        .map((row) => {
+          const record = {};
+          headers.forEach((header, index) => {
+            record[header] = row[index] ?? "";
+          });
+          return record;
+        });
+
+      return {sheetName, rows, score: bestScore, headerRow: bestIndex + 1};
+    }
+
+    function extractWorkbookRows(workbook) {
+      const candidates = workbook.SheetNames
+        .map((sheetName) => rowsFromSheet(sheetName, workbook.Sheets[sheetName]))
+        .sort((a, b) => (b.rows.length ? b.score : 0) - (a.rows.length ? a.score : 0));
+
+      const candidate = candidates.find((item) => item.rows.length && item.score >= 3);
+      if (!candidate) {
+        throw new Error(`没有找到有效表头。已检查 sheet：${workbook.SheetNames.join(", ")}`);
+      }
+
+      return candidate;
+    }
+
+    async function handleFile(file) {
+      showError("");
+      if (!window.XLSX) {
+        showError("Excel 解析库没有加载成功。请确认电脑可以访问网络后刷新页面。");
+        return;
+      }
+
+      try {
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, {type: "array", cellDates: true});
+        const detected = extractWorkbookRows(workbook);
+
+        state.rows = detected.rows
+          .map(normalizeRow)
+          .filter((row) => row.awb && row.backlog >= 8);
+
+        if (!state.rows.length) {
+          showError(`已识别 sheet「${detected.sheetName}」第 ${detected.headerRow} 行为表头，但没有找到 Backlog (D) ≥ 8 的数据。请检查 Backlog 列是否是数字。`);
+          setDataStatus("上传完成，但没有识别到超期数据 / Arquivo carregado, mas sem dados acima de SLA+8 reconhecidos.");
+        } else {
+          setDataStatus(`已从 sheet「${detected.sheetName}」加载 ${state.rows.length} 条超期数据 / ${state.rows.length} linhas carregadas.`);
+        }
+
+        refreshFilters();
+        applyFilters();
+
+        if (state.rows.length) {
+          await publishRows(file.name);
+        }
+      } catch (error) {
+        showError(`处理文件失败：${error.message}`);
+      }
+    }
+
+    els.fileInput.addEventListener("change", (event) => {
+      const file = event.target.files[0];
+      if (file) handleFile(file);
+    });
+
+    els.adminOpen.addEventListener("click", openAdmin);
+    els.adminClose.addEventListener("click", closeAdmin);
+    els.adminUnlock.addEventListener("click", unlockAdmin);
+    els.adminPassword.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") unlockAdmin();
+    });
+    els.adminBackdrop.addEventListener("click", (event) => {
+      if (event.target === els.adminBackdrop) closeAdmin();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeAdmin();
+    });
+
+    [els.slaFilter].forEach((el) => {
+      el.addEventListener("input", applyFilters);
+      el.addEventListener("change", applyFilters);
+    });
+
+    function toggleMulti(type) {
+      const multiMap = {
+        region: els.regionMulti,
+        base: els.baseMulti,
+        owner: els.ownerMulti
+      };
+      const current = multiMap[type];
+      Object.entries(multiMap).forEach(([key, element]) => {
+        if (key !== type) element.classList.remove("open");
+      });
+      current.classList.toggle("open");
+      const config = getMultiConfig(type);
+      if (current.classList.contains("open")) {
+        setTimeout(() => config.search.focus(), 0);
+      }
+    }
+
+    els.regionMenuButton.addEventListener("click", () => toggleMulti("region"));
+    els.baseMenuButton.addEventListener("click", () => toggleMulti("base"));
+    els.ownerMenuButton.addEventListener("click", () => toggleMulti("owner"));
+
+    els.regionSearch.addEventListener("input", () => {
+      renderMultiFilter("region", getMultiConfig("region").values);
+    });
+    els.baseSearch.addEventListener("input", () => {
+      renderMultiFilter("base", getMultiConfig("base").values);
+    });
+    els.ownerSearch.addEventListener("input", () => {
+      renderMultiFilter("owner", getMultiConfig("owner").values);
+    });
+
+    document.querySelectorAll("[data-clear-filter]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const type = button.dataset.clearFilter;
+        const config = getMultiConfig(type);
+        config.selected.clear();
+        config.search.value = "";
+        renderMultiFilter(type, config.values);
+        updateMultiButton(type);
+        applyFilters();
+      });
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!els.regionMulti.contains(event.target)) els.regionMulti.classList.remove("open");
+      if (!els.baseMulti.contains(event.target)) els.baseMulti.classList.remove("open");
+      if (!els.ownerMulti.contains(event.target)) els.ownerMulti.classList.remove("open");
+    });
+
+    function buildExportRows(type) {
+      if (type === "base") {
+        return {
+          filename: "Acima_de_SLA8_por_base.csv",
+          headers: ["Base", "Total Acima de SLA+8"],
+          rows: topEntries(countBy(state.filtered, "base"), 9999)
+        };
+      }
+
+      if (type === "owner") {
+        return {
+          filename: "Acima_de_SLA8_por_especialista.csv",
+          headers: ["Especialista", "Total Acima de SLA+8"],
+          rows: topEntries(countBy(state.filtered, "owner"), 9999)
+        };
+      }
+
+      if (type === "sla") {
+        const slaMap = {"SLA+8": 0, "SLA+9": 0, "SLA+10": 0};
+        state.filtered.forEach((row) => { slaMap[row.sla] = (slaMap[row.sla] || 0) + 1; });
+        return {
+          filename: "Faixa_Acima_de_SLA8.csv",
+          headers: ["Faixa Acima de SLA+8", "Total Acima de SLA+8"],
+          rows: Object.entries(slaMap)
+        };
+      }
+
+      if (type === "ownerValue") {
+        return {
+          filename: "Valor_por_especialista.csv",
+          headers: ["Especialista", "Valor Total"],
+          rows: topEntries(sumBy(state.filtered, "owner", "value"), 9999)
+            .map(([owner, value]) => [owner, value.toFixed(2)])
+        };
+      }
+
+      if (type === "trend") {
+        return {
+          filename: "Tendencia_diaria_SLA.csv",
+          headers: ["Data", "SLA+8", "SLA+9", "SLA+10", "Total", "Valor Total"],
+          rows: state.history.map((item) => [
+            item.reportDate,
+            item.sla8 || 0,
+            item.sla9 || 0,
+            item.sla10 || 0,
+            item.total || 0,
+            Number(item.valorTotal || 0).toFixed(2)
+          ])
+        };
+      }
+
+      return {
+        filename: "Detalhes_AWB.csv",
+        headers: [
+          "AWB",
+          "Região",
+          "Faixa Acima de SLA+8",
+          "Backlog (D)",
+          "No tracking (D)",
+          "data da última bipagem",
+          "o tipo da última bipagem",
+          "base da última bipagem",
+          "Especialista",
+          "valor",
+          "Ação Sugerida"
+        ],
+        rows: state.filtered.map((row) => [
+          row.awb,
+          row.region,
+          row.sla,
+          row.backlog,
+          row.noTracking,
+          row.date,
+          row.type,
+          row.base,
+          row.owner,
+          row.value.toFixed(2),
+          row.action
+        ])
+      };
+    }
+
+    function downloadCsv(type) {
+      const exportData = buildExportRows(type);
+      const headers = [
+        ...exportData.headers,
+        "当前筛选 / Filtro atual"
+      ];
+      const filterText = getFilterText();
+      const rows = exportData.rows.map((row) => [...row, filterText]);
+      const csv = [headers, ...rows]
+        .map((line) => line.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
+        .join("\n");
+      const blob = new Blob(["\ufeff" + csv], {type: "text/csv;charset=utf-8"});
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = exportData.filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function getFilterText() {
+      const parts = [
+        `Região=${formatSelectedFilter(state.selectedRegions, "Todas")}`,
+        `Base=${formatSelectedFilter(state.selectedBases, "Todas")}`,
+        `Especialista=${formatSelectedFilter(state.selectedOwners, "Todos")}`,
+        `Faixa Acima de SLA+8=${els.slaFilter.value || "Todas"}`,
+      ];
+      return parts.join("; ");
+    }
+
+    function formatSelectedFilter(selected, emptyText) {
+      return selected.size ? [...selected].join(", ") : emptyText;
+    }
+
+    document.querySelectorAll("[data-export]").forEach((button) => {
+      button.addEventListener("click", () => downloadCsv(button.dataset.export));
+    });
+
+    els.reportDate.value = todayIsoDate();
+    render();
+    loadPublishedData();
+  </script>
+</body>
+</html>

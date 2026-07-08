@@ -35,7 +35,25 @@ http://localhost:3000
 ADMIN_PASSWORD=你的后台密码
 ```
 
-如果部署平台重启后会清空本地文件，需要改成云数据库或对象存储。第一版会把最新数据保存在服务器的 `data/latest.json`。
+推荐使用 Supabase 保存数据。配置 Supabase 后，Render 重启或休眠也不会丢数据。
+
+需要在 Render 设置：
+
+```text
+SUPABASE_URL=你的 Supabase Project URL
+SUPABASE_SERVICE_ROLE_KEY=你的 Supabase service_role key
+SUPABASE_TABLE=dashboard_snapshots
+```
+
+Supabase 建表 SQL 在：
+
+```text
+supabase.sql
+```
+
+配置后，每次上传会按“数据日期”保存一份每日快照，趋势图会读取这些历史快照。
+
+如果没有配置 Supabase，系统会退回本地文件 `data/latest.json`，但 Render 免费版重启后可能丢数据。
 
 ## 使用方式
 
