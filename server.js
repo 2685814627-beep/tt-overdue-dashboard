@@ -129,6 +129,15 @@ function buildDataResponse(snapshots) {
     publishedAt: latest?.publishedAt || null,
     reportDate: latest?.reportDate || null,
     rows: latest?.rows || [],
+    snapshots: [...snapshots]
+      .map((snapshot) => ({
+        reportDate: snapshot.reportDate,
+        publishedAt: snapshot.publishedAt,
+        fileName: snapshot.fileName,
+        rows: snapshot.rows || [],
+        summary: snapshot.summary || summarizeRows(snapshot.rows || [])
+      }))
+      .sort((a, b) => String(a.reportDate || "").localeCompare(String(b.reportDate || ""))),
     history
   };
 }
