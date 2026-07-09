@@ -45,9 +45,6 @@
       -webkit-backdrop-filter: saturate(180%) blur(18px);
       border-bottom: 1px solid var(--line);
       padding: 18px 26px;
-      position: sticky;
-      top: 0;
-      z-index: 10;
     }
 
     .header-inner {
@@ -461,6 +458,44 @@
       color: #515154;
     }
 
+    .sort-button {
+      min-height: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: inherit;
+      box-shadow: none;
+      font: inherit;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+    }
+
+    .sort-button:hover {
+      transform: none;
+      filter: none;
+      color: var(--blue);
+    }
+
+    .sort-button::after {
+      content: "↕";
+      color: #9a9a9f;
+      font-size: 11px;
+    }
+
+    .sort-button.active.asc::after {
+      content: "↑";
+      color: var(--blue);
+    }
+
+    .sort-button.active.desc::after {
+      content: "↓";
+      color: var(--blue);
+    }
+
     tr:hover td {
       background: rgba(0, 113, 227, 0.05);
     }
@@ -697,13 +732,17 @@
       </div>
 
       <div class="control">
-        <label for="slaFilter">超期分段 / Faixa Acima de SLA+8</label>
-        <select id="slaFilter">
-          <option value="">全部 / Todas</option>
-          <option value="SLA+8">SLA+8</option>
-          <option value="SLA+9">SLA+9</option>
-          <option value="SLA+10">SLA+10</option>
-        </select>
+        <label for="slaMenuButton">超期分段 / Faixa Acima de SLA+8</label>
+        <div id="slaMulti" class="multi-filter">
+          <button id="slaMenuButton" class="multi-button" type="button">全部 / Todas</button>
+          <div class="multi-popover">
+            <input id="slaSearch" class="multi-search" type="search" placeholder="搜索分段 / Buscar faixa">
+            <div id="slaOptions" class="multi-options"></div>
+            <div class="multi-footer">
+              <button class="export-small" data-clear-filter="sla" type="button">Limpar</button>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -733,7 +772,8 @@
       </div>
       <div class="metric" data-trend-metric="valorTotal">
         <div class="metric-title">总金额 / Valor Total</div>
-        <div id="totalValue" class="metric-value">R$ 0</div>
+        <div id="totalValue" class="metric-value">0,00</div>
+        <div class="metric-note">R$ / BRL</div>
       </div>
       <div class="metric" data-trend-metric="maxNoTracking">
         <div class="metric-title">最大 No Tracking / Maior No Tracking</div>
@@ -807,17 +847,17 @@
         <table>
           <thead>
             <tr>
-              <th>AWB</th>
-              <th>区域 / Região</th>
-              <th>超期分段 / Faixa</th>
-              <th>Backlog (D)</th>
-              <th>No tracking (D)</th>
-              <th>最后扫描日期 / Data</th>
-              <th>最后扫描类型 / Tipo</th>
-              <th>网点 / Base</th>
-              <th>负责人 / Especialista</th>
-              <th>金额 / Valor</th>
-              <th>建议动作 / Ação Sugerida</th>
+              <th><button class="sort-button" data-sort="awb" type="button">AWB</button></th>
+              <th><button class="sort-button" data-sort="region" type="button">区域 / Região</button></th>
+              <th><button class="sort-button" data-sort="sla" type="button">超期分段 / Faixa</button></th>
+              <th><button class="sort-button" data-sort="backlog" type="button">Backlog (D)</button></th>
+              <th><button class="sort-button" data-sort="noTracking" type="button">No tracking (D)</button></th>
+              <th><button class="sort-button" data-sort="date" type="button">最后扫描日期 / Data</button></th>
+              <th><button class="sort-button" data-sort="type" type="button">最后扫描类型 / Tipo</button></th>
+              <th><button class="sort-button" data-sort="base" type="button">网点 / Base</button></th>
+              <th><button class="sort-button" data-sort="owner" type="button">负责人 / Especialista</button></th>
+              <th><button class="sort-button" data-sort="value" type="button">金额 / Valor</button></th>
+              <th><button class="sort-button" data-sort="action" type="button">建议动作 / Ação Sugerida</button></th>
             </tr>
           </thead>
           <tbody id="detailBody"></tbody>
@@ -878,11 +918,13 @@
       activeTrendMetric: "total",
       trendRange: "all",
       trendGranularity: "day",
+      tableSort: {key: "", direction: "desc"},
       charts: {},
       selectedDates: new Set(),
       selectedRegions: new Set(),
       selectedBases: new Set(),
-      selectedOwners: new Set()
+      selectedOwners: new Set(),
+      selectedSlas: new Set()
     };
 
     const els = {
@@ -892,19 +934,22 @@
       regionMulti: document.getElementById("regionMulti"),
       baseMulti: document.getElementById("baseMulti"),
       ownerMulti: document.getElementById("ownerMulti"),
+      slaMulti: document.getElementById("slaMulti"),
       dateMenuButton: document.getElementById("dateMenuButton"),
       regionMenuButton: document.getElementById("regionMenuButton"),
       baseMenuButton: document.getElementById("baseMenuButton"),
       ownerMenuButton: document.getElementById("ownerMenuButton"),
+      slaMenuButton: document.getElementById("slaMenuButton"),
       dateSearch: document.getElementById("dateSearch"),
       regionSearch: document.getElementById("regionSearch"),
       baseSearch: document.getElementById("baseSearch"),
       ownerSearch: document.getElementById("ownerSearch"),
+      slaSearch: document.getElementById("slaSearch"),
       dateOptions: document.getElementById("dateOptions"),
       regionOptions: document.getElementById("regionOptions"),
       baseOptions: document.getElementById("baseOptions"),
       ownerOptions: document.getElementById("ownerOptions"),
-      slaFilter: document.getElementById("slaFilter"),
+      slaOptions: document.getElementById("slaOptions"),
       trendRange: document.getElementById("trendRange"),
       trendGranularity: document.getElementById("trendGranularity"),
       adminOpen: document.getElementById("adminOpen"),
@@ -1093,9 +1138,11 @@
       renderMultiFilter("region", regions);
       renderMultiFilter("base", bases);
       renderMultiFilter("owner", owners);
+      renderMultiFilter("sla", getMultiConfig("sla").values);
       updateMultiButton("region");
       updateMultiButton("base");
       updateMultiButton("owner");
+      updateMultiButton("sla");
     }
 
     function getMultiConfig(type) {
@@ -1130,6 +1177,17 @@
           button: els.baseMenuButton,
           emptyText: "全部 / Todas",
           selectedText: "已选 {count} 个 / {count} bases"
+        };
+      }
+      if (type === "sla") {
+        return {
+          values: ["SLA+8", "SLA+9", "SLA+10"],
+          selected: state.selectedSlas,
+          search: els.slaSearch,
+          options: els.slaOptions,
+          button: els.slaMenuButton,
+          emptyText: "全部 / Todas",
+          selectedText: "已选 {count} 个 / {count} faixas"
         };
       }
       return {
@@ -1195,13 +1253,13 @@
       const selectedRegions = state.selectedRegions;
       const selectedBases = state.selectedBases;
       const selectedOwners = state.selectedOwners;
-      const sla = els.slaFilter.value;
+      const selectedSlas = state.selectedSlas;
 
       state.filtered = state.rows.filter((row) => {
         const matchRegion = !selectedRegions.size || selectedRegions.has(row.region);
         const matchBase = !selectedBases.size || selectedBases.has(row.base);
         const matchOwner = !selectedOwners.size || selectedOwners.has(row.owner);
-        const matchSla = !sla || row.sla === sla;
+        const matchSla = !selectedSlas.size || selectedSlas.has(row.sla);
         return row.backlog >= 8 && matchRegion && matchBase && matchOwner && matchSla;
       });
 
@@ -1219,6 +1277,13 @@
       return new Intl.NumberFormat("pt-BR", {
         style: "currency",
         currency: "BRL"
+      }).format(value || 0);
+    }
+
+    function formatMoneyValue(value) {
+      return new Intl.NumberFormat("pt-BR", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
       }).format(value || 0);
     }
 
@@ -1305,14 +1370,15 @@
       setMetric("sla8Count", sla8);
       setMetric("sla9Count", sla9);
       setMetric("sla10Count", sla10);
-      setMetric("totalValue", formatMoney(value));
+      setMetric("totalValue", formatMoneyValue(value));
       setMetric("maxNoTracking", maxNoTracking);
     }
 
     function renderTable(rows) {
       els.tableCount.textContent = `${rows.length} 条 / linhas`;
       els.detailBody.innerHTML = "";
-      rows.slice(0, 500).forEach((row) => {
+      updateSortButtons();
+      getSortedRows(rows).slice(0, 500).forEach((row) => {
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${escapeHtml(row.awb)}</td>
@@ -1328,6 +1394,49 @@
           <td>${escapeHtml(row.action)}</td>
         `;
         els.detailBody.appendChild(tr);
+      });
+    }
+
+    function getSortedRows(rows) {
+      const sorted = [...rows];
+      const {key, direction} = state.tableSort;
+      if (!key) return sorted;
+
+      const directionValue = direction === "asc" ? 1 : -1;
+      const slaRank = {"SLA+8": 8, "SLA+9": 9, "SLA+10": 10};
+      const numericKeys = new Set(["backlog", "noTracking", "value"]);
+
+      sorted.sort((a, b) => {
+        let left = a[key];
+        let right = b[key];
+
+        if (key === "sla") {
+          left = slaRank[left] || 0;
+          right = slaRank[right] || 0;
+        } else if (numericKeys.has(key)) {
+          left = Number(left) || 0;
+          right = Number(right) || 0;
+        } else if (key === "date") {
+          left = String(left || "");
+          right = String(right || "");
+        } else {
+          left = normalizeKey(left);
+          right = normalizeKey(right);
+        }
+
+        if (left < right) return -1 * directionValue;
+        if (left > right) return 1 * directionValue;
+        return String(a.awb || "").localeCompare(String(b.awb || ""));
+      });
+      return sorted;
+    }
+
+    function updateSortButtons() {
+      document.querySelectorAll("[data-sort]").forEach((button) => {
+        const active = button.dataset.sort === state.tableSort.key;
+        button.classList.toggle("active", active);
+        button.classList.toggle("asc", active && state.tableSort.direction === "asc");
+        button.classList.toggle("desc", active && state.tableSort.direction === "desc");
       });
     }
 
@@ -1415,13 +1524,13 @@
       const selectedRegions = state.selectedRegions;
       const selectedBases = state.selectedBases;
       const selectedOwners = state.selectedOwners;
-      const sla = els.slaFilter.value;
+      const selectedSlas = state.selectedSlas;
 
       return rows.filter((row) => {
         const matchRegion = !selectedRegions.size || selectedRegions.has(row.region);
         const matchBase = !selectedBases.size || selectedBases.has(row.base);
         const matchOwner = !selectedOwners.size || selectedOwners.has(row.owner);
-        const matchSla = !sla || row.sla === sla;
+        const matchSla = !selectedSlas.size || selectedSlas.has(row.sla);
         return row.backlog >= 8 && matchRegion && matchBase && matchOwner && matchSla;
       });
     }
@@ -1503,9 +1612,16 @@
               backgroundColor: "rgba(29, 29, 31, 0.88)",
               padding: 10,
               displayColors: false,
-              callbacks: meta.currency ? {
-                label: (context) => formatMoney(context.raw)
-              } : {}
+              callbacks: {
+                label: (context) => `${meta.title}: ${formatTrendValue(meta, context.raw)}`,
+                afterLabel: (context) => {
+                  const currentIndex = context.dataIndex;
+                  if (currentIndex <= 0) return "较上一期：无 / Sem período anterior";
+                  const previous = points[currentIndex - 1]?.value || 0;
+                  const delta = (context.raw || 0) - previous;
+                  return `较上一期 / vs período anterior: ${formatTrendDelta(meta, delta)}`;
+                }
+              }
             }
           },
           scales: {
@@ -1700,6 +1816,17 @@
       if (state.trendGranularity === "month") return `${key} 月 / mês`;
       if (state.trendGranularity === "week") return `${key} 周 / semana`;
       return key;
+    }
+
+    function formatTrendValue(meta, value) {
+      return meta.currency ? formatMoney(value) : String(value ?? 0);
+    }
+
+    function formatTrendDelta(meta, delta) {
+      if (!delta) return "0";
+      const sign = delta > 0 ? "+" : "-";
+      const absolute = Math.abs(delta);
+      return `${sign}${meta.currency ? formatMoney(absolute) : absolute}`;
     }
 
     function hydrateSnapshots(payload) {
@@ -1941,11 +2068,6 @@
       if (event.key === "Escape") closeAdmin();
     });
 
-    [els.slaFilter].forEach((el) => {
-      el.addEventListener("input", applyFilters);
-      el.addEventListener("change", applyFilters);
-    });
-
     els.trendRange.addEventListener("change", () => {
       state.trendRange = els.trendRange.value;
       renderTrendChart();
@@ -1970,7 +2092,8 @@
         date: els.dateMulti,
         region: els.regionMulti,
         base: els.baseMulti,
-        owner: els.ownerMulti
+        owner: els.ownerMulti,
+        sla: els.slaMulti
       };
       const current = multiMap[type];
       Object.entries(multiMap).forEach(([key, element]) => {
@@ -1987,6 +2110,7 @@
     els.regionMenuButton.addEventListener("click", () => toggleMulti("region"));
     els.baseMenuButton.addEventListener("click", () => toggleMulti("base"));
     els.ownerMenuButton.addEventListener("click", () => toggleMulti("owner"));
+    els.slaMenuButton.addEventListener("click", () => toggleMulti("sla"));
 
     els.dateSearch.addEventListener("input", () => {
       renderMultiFilter("date", getMultiConfig("date").values);
@@ -1999,6 +2123,9 @@
     });
     els.ownerSearch.addEventListener("input", () => {
       renderMultiFilter("owner", getMultiConfig("owner").values);
+    });
+    els.slaSearch.addEventListener("input", () => {
+      renderMultiFilter("sla", getMultiConfig("sla").values);
     });
 
     document.querySelectorAll("[data-clear-filter]").forEach((button) => {
@@ -2022,6 +2149,7 @@
       if (!els.regionMulti.contains(event.target)) els.regionMulti.classList.remove("open");
       if (!els.baseMulti.contains(event.target)) els.baseMulti.classList.remove("open");
       if (!els.ownerMulti.contains(event.target)) els.ownerMulti.classList.remove("open");
+      if (!els.slaMulti.contains(event.target)) els.slaMulti.classList.remove("open");
     });
 
     function buildExportRows(type) {
@@ -2088,7 +2216,7 @@
           "valor",
           "Ação Sugerida"
         ],
-        rows: state.filtered.map((row) => [
+        rows: getSortedRows(state.filtered).map((row) => [
           row.awb,
           row.region,
           row.sla,
@@ -2130,7 +2258,7 @@
         `Região=${formatSelectedFilter(state.selectedRegions, "Todas")}`,
         `Base=${formatSelectedFilter(state.selectedBases, "Todas")}`,
         `Especialista=${formatSelectedFilter(state.selectedOwners, "Todos")}`,
-        `Faixa Acima de SLA+8=${els.slaFilter.value || "Todas"}`,
+        `Faixa Acima de SLA+8=${formatSelectedFilter(state.selectedSlas, "Todas")}`,
         `Tendência=${els.trendRange.value}/${els.trendGranularity.value}`,
       ];
       return parts.join("; ");
@@ -2142,6 +2270,18 @@
 
     document.querySelectorAll("[data-export]").forEach((button) => {
       button.addEventListener("click", () => downloadCsv(button.dataset.export));
+    });
+
+    document.querySelectorAll("[data-sort]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const key = button.dataset.sort;
+        const sameKey = state.tableSort.key === key;
+        state.tableSort = {
+          key,
+          direction: sameKey && state.tableSort.direction === "asc" ? "desc" : "asc"
+        };
+        renderTable(state.filtered);
+      });
     });
 
     els.reportDate.value = todayIsoDate();
