@@ -786,10 +786,6 @@
       <div class="panel-head">
         <h2 id="trendTitle">超期总单量趋势 / Tendência Total Acima de SLA+8</h2>
         <div class="panel-actions">
-          <select id="trendCompare" class="compact-select" aria-label="趋势对比">
-            <option value="region" selected>按区域 / Por região</option>
-            <option value="total">合计 / Total</option>
-          </select>
           <select id="trendRange" class="compact-select" aria-label="趋势范围">
             <option value="all">全部历史 / Todo histórico</option>
             <option value="selected">所选日期 / Datas selecionadas</option>
@@ -920,7 +916,6 @@
       snapshots: [],
       history: [],
       activeTrendMetric: "total",
-      trendCompare: "region",
       trendRange: "all",
       trendGranularity: "day",
       tableSort: {key: "", direction: "desc"},
@@ -955,7 +950,6 @@
       baseOptions: document.getElementById("baseOptions"),
       ownerOptions: document.getElementById("ownerOptions"),
       slaOptions: document.getElementById("slaOptions"),
-      trendCompare: document.getElementById("trendCompare"),
       trendRange: document.getElementById("trendRange"),
       trendGranularity: document.getElementById("trendGranularity"),
       adminOpen: document.getElementById("adminOpen"),
@@ -1597,76 +1591,12 @@
         }));
     }
 
-    function getRegionColor(region, index) {
-      const normalized = normalizeKey(region);
-      if (normalized.includes("nordeste 2")) return "#1f6fff";
-      if (normalized.includes("norte") || normalized.includes("北部")) return "#facc15";
-      const colors = ["#12b76a", "#f79009", "#d92d20", "#5856d6", "#06aed5"];
-      return colors[index % colors.length];
-    }
-
-    function buildTrendSeries() {
-      const meta = getTrendMeta(state.activeTrendMetric);
-      if (state.trendCompare !== "region") {
-        const points = buildTrendPoints();
-        return {
-          labels: points.map((item) => item.label),
-          datasets: [{
-            label: "合计 / Total",
-            color: "#1f6fff",
-            points
-          }]
-        };
-      }
-
-      const periodLabels = new Map();
-      const regionPeriodRows = new Map();
-      getTrendSourceSnapshots().forEach((snapshot) => {
-        const period = getTrendPeriodKey(snapshot.reportDate);
-        if (!period) return;
-        periodLabels.set(period, getTrendPeriodLabel(period));
-        filterRowsForTrend(snapshot.rows || []).forEach((row) => {
-          const region = row.region || "Sem região / 无区域";
-          const regionMap = regionPeriodRows.get(region) || new Map();
-          const rows = regionMap.get(period) || [];
-          rows.push(row);
-          regionMap.set(period, rows);
-          regionPeriodRows.set(region, regionMap);
-        });
-      });
-
-      const periods = [...periodLabels.keys()].sort();
-      const regionPriority = (region) => {
-        const normalized = normalizeKey(region);
-        if (normalized.includes("nordeste 2")) return 1;
-        if (normalized.includes("norte") || normalized.includes("北部")) return 2;
-        return 9;
-      };
-      const regions = [...regionPeriodRows.keys()].sort((a, b) => {
-        return regionPriority(a) - regionPriority(b) || String(a).localeCompare(String(b));
-      });
-
-      return {
-        labels: periods.map((period) => periodLabels.get(period)),
-        datasets: regions.map((region, index) => ({
-          label: region,
-          color: getRegionColor(region, index),
-          points: periods.map((period) => ({
-            period,
-            label: periodLabels.get(period),
-            dates: [period],
-            value: meta.compute(regionPeriodRows.get(region)?.get(period) || [])
-          }))
-        }))
-      };
-    }
-
     function renderTrendChart() {
       if (!window.Chart) return;
       if (state.charts.trendChart) state.charts.trendChart.destroy();
 
       const meta = getTrendMeta(state.activeTrendMetric);
-      const trendSeries = buildTrendSeries();
+      const points = buildTrendPoints();
       els.trendTitle.textContent = meta.title;
       const ctx = document.getElementById("trendChart");
       const gradient = ctx.getContext("2d").createLinearGradient(0, 0, 0, 280);
@@ -1675,21 +1605,21 @@
       state.charts.trendChart = new Chart(ctx, {
         type: "line",
         data: {
-          labels: trendSeries.labels,
-          datasets: trendSeries.datasets.map((dataset) => ({
-            label: dataset.label,
-            data: dataset.points.map((item) => item.value),
-            borderColor: dataset.color,
-            backgroundColor: state.trendCompare === "region" ? `${dataset.color}18` : gradient,
+          labels: points.map((item) => item.label),
+          datasets: [{
+            label: meta.title,
+            data: points.map((item) => item.value),
+            borderColor: "#1f6fff",
+            backgroundColor: gradient,
             borderWidth: 2,
-            fill: state.trendCompare !== "region",
+            fill: true,
             tension: 0,
             pointBackgroundColor: "#ff3b30",
             pointBorderColor: "#ffffff",
             pointBorderWidth: 2,
             pointRadius: 3,
             pointHoverRadius: 5
-          }))
+          }]
         },
         options: {
           responsive: true,
@@ -1704,24 +1634,17 @@
             }
           },
           plugins: {
-            legend: {
-              display: state.trendCompare === "region",
-              labels: {
-                usePointStyle: true,
-                boxWidth: 8,
-                boxHeight: 8
-              }
-            },
+            legend: {display: false},
             tooltip: {
               backgroundColor: "rgba(29, 29, 31, 0.88)",
               padding: 10,
-              displayColors: true,
+              displayColors: false,
               callbacks: {
-                label: (context) => `${context.dataset.label}: ${formatTrendValue(meta, context.raw)}`,
+                label: (context) => `${meta.title}: ${formatTrendValue(meta, context.raw)}`,
                 afterLabel: (context) => {
                   const currentIndex = context.dataIndex;
                   if (currentIndex <= 0) return "较上一期：无 / Sem período anterior";
-                  const previous = context.dataset.data[currentIndex - 1] || 0;
+                  const previous = points[currentIndex - 1]?.value || 0;
                   const delta = (context.raw || 0) - previous;
                   return `较上一期 / vs período anterior: ${formatTrendDelta(meta, delta)}`;
                 }
@@ -2177,11 +2100,6 @@
       renderTrendChart();
     });
 
-    els.trendCompare.addEventListener("change", () => {
-      state.trendCompare = els.trendCompare.value;
-      renderTrendChart();
-    });
-
     els.trendGranularity.addEventListener("change", () => {
       state.trendGranularity = els.trendGranularity.value;
       renderTrendChart();
@@ -2300,16 +2218,13 @@
 
       if (type === "trend") {
         const meta = getTrendMeta(state.activeTrendMetric);
-        const trendSeries = buildTrendSeries();
         return {
           filename: `Tendencia_${state.activeTrendMetric}.csv`,
-          headers: ["Período", ...trendSeries.datasets.map((dataset) => dataset.label)],
-          rows: trendSeries.labels.map((label, index) => [
-            label,
-            ...trendSeries.datasets.map((dataset) => {
-              const value = dataset.points[index]?.value || 0;
-              return meta.currency ? Number(value).toFixed(2) : value;
-            })
+          headers: ["Período", "Datas", meta.title],
+          rows: buildTrendPoints().map((item) => [
+            item.label,
+            (item.dates || []).join(" / "),
+            meta.currency ? Number(item.value || 0).toFixed(2) : item.value
           ])
         };
       }
@@ -2372,7 +2287,7 @@
         `Base=${formatSelectedFilter(state.selectedBases, "Todas")}`,
         `Especialista=${formatSelectedFilter(state.selectedOwners, "Todos")}`,
         `Faixa Acima de SLA+8=${formatSelectedFilter(state.selectedSlas, "Todas")}`,
-        `Tendência=${els.trendCompare.value}/${els.trendRange.value}/${els.trendGranularity.value}`,
+        `Tendência=${els.trendRange.value}/${els.trendGranularity.value}`,
       ];
       return parts.join("; ");
     }
