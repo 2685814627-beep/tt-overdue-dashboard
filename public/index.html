@@ -978,6 +978,22 @@
       return String(value || "").trim().toLowerCase();
     }
 
+    function normalizeRegion(value) {
+      const text = String(value || "").trim();
+      if (!text) return "Sem região / 无区域";
+      const key = normalizeKey(text)
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\s+/g, " ");
+      if (["northeast 2", "nordeste2", "nordeste 2", "东北2", "东北 2"].includes(key)) {
+        return "Nordeste 2";
+      }
+      if (["north", "norte", "北部"].includes(key)) {
+        return "Norte";
+      }
+      return text;
+    }
+
     function findValue(raw, keys) {
       for (const key of keys) {
         if (Object.prototype.hasOwnProperty.call(raw, key)) return raw[key];
@@ -1065,7 +1081,7 @@
       const type = String(findValue(raw, fieldMap.type) || "").trim();
       return {
         awb: String(findValue(raw, fieldMap.awb) || "").trim(),
-        region: String(findValue(raw, fieldMap.region) || "").trim() || "Sem região / 无区域",
+        region: normalizeRegion(findValue(raw, fieldMap.region)),
         backlog,
         noTracking,
         date: formatDate(findValue(raw, fieldMap.date)),
@@ -1726,7 +1742,7 @@
       return rows
         .map((row) => ({
           awb: String(row.awb || "").trim(),
-          region: String(row.region || "").trim() || "Sem região / 无区域",
+          region: normalizeRegion(row.region),
           backlog: toNumber(row.backlog),
           noTracking: toNumber(row.noTracking),
           date: String(row.date || "").trim(),
@@ -1898,7 +1914,7 @@
       state.rows = rows
         .map((row) => ({
           awb: String(row.awb || "").trim(),
-          region: String(row.region || "").trim() || "Sem região / 无区域",
+          region: normalizeRegion(row.region),
           backlog: toNumber(row.backlog),
           noTracking: toNumber(row.noTracking),
           date: String(row.date || "").trim(),
