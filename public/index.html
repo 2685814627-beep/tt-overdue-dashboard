@@ -1129,20 +1129,48 @@
     }
 
     function refreshFilters() {
-      const regions = [...new Set(state.rows.map((row) => row.region))].sort();
-      const bases = [...new Set(state.rows.map((row) => row.base))].sort();
-      const owners = [...new Set(state.rows.map((row) => row.owner))].sort();
-      state.selectedRegions = new Set([...state.selectedRegions].filter((value) => regions.includes(value)));
-      state.selectedBases = new Set([...state.selectedBases].filter((value) => bases.includes(value)));
-      state.selectedOwners = new Set([...state.selectedOwners].filter((value) => owners.includes(value)));
-      renderMultiFilter("region", regions);
-      renderMultiFilter("base", bases);
-      renderMultiFilter("owner", owners);
-      renderMultiFilter("sla", getMultiConfig("sla").values);
-      updateMultiButton("region");
-      updateMultiButton("base");
-      updateMultiButton("owner");
-      updateMultiButton("sla");
+      syncDependentFilters(true);
+    }
+
+    function syncDependentFilters(pruneSelections = false) {
+      const types = ["region", "owner", "base", "sla"];
+      if (pruneSelections) {
+        types.forEach((type) => {
+          const config = getMultiConfig(type);
+          const values = new Set(config.values);
+          config.selected = new Set([...config.selected].filter((value) => values.has(value)));
+          if (type === "region") state.selectedRegions = config.selected;
+          if (type === "owner") state.selectedOwners = config.selected;
+          if (type === "base") state.selectedBases = config.selected;
+          if (type === "sla") state.selectedSlas = config.selected;
+        });
+      }
+
+      types.forEach((type) => {
+        const config = getMultiConfig(type);
+        renderMultiFilter(type, config.values);
+        updateMultiButton(type);
+      });
+    }
+
+    function getRowsForFilterOptions(type) {
+      return state.rows.filter((row) => {
+        const matchRegion = type === "region" || !state.selectedRegions.size || state.selectedRegions.has(row.region);
+        const matchOwner = !["region", "owner"].includes(type) && state.selectedOwners.size
+          ? state.selectedOwners.has(row.owner)
+          : true;
+        const matchBase = type === "sla" && state.selectedBases.size
+          ? state.selectedBases.has(row.base)
+          : true;
+        const matchSla = type !== "sla" && state.selectedSlas.size
+          ? state.selectedSlas.has(row.sla)
+          : true;
+        return row.backlog >= 8 && matchRegion && matchOwner && matchBase && matchSla;
+      });
+    }
+
+    function getFacetValues(type, field) {
+      return [...new Set(getRowsForFilterOptions(type).map((row) => row[field]))].sort();
     }
 
     function getMultiConfig(type) {
@@ -1159,7 +1187,7 @@
       }
       if (type === "region") {
         return {
-          values: [...new Set(state.rows.map((row) => row.region))].sort(),
+          values: getFacetValues("region", "region"),
           selected: state.selectedRegions,
           search: els.regionSearch,
           options: els.regionOptions,
@@ -1170,7 +1198,7 @@
       }
       if (type === "base") {
         return {
-          values: [...new Set(state.rows.map((row) => row.base))].sort(),
+          values: getFacetValues("base", "base"),
           selected: state.selectedBases,
           search: els.baseSearch,
           options: els.baseOptions,
@@ -1181,7 +1209,7 @@
       }
       if (type === "sla") {
         return {
-          values: ["SLA+8", "SLA+9", "SLA+10"],
+          values: ["SLA+8", "SLA+9", "SLA+10"].filter((value) => getFacetValues("sla", "sla").includes(value)),
           selected: state.selectedSlas,
           search: els.slaSearch,
           options: els.slaOptions,
@@ -1191,7 +1219,7 @@
         };
       }
       return {
-        values: [...new Set(state.rows.map((row) => row.owner))].sort(),
+        values: getFacetValues("owner", "owner"),
         selected: state.selectedOwners,
         search: els.ownerSearch,
         options: els.ownerOptions,
@@ -1232,6 +1260,7 @@
           if (type === "date") {
             loadRowsForSelectedDates();
           } else {
+            syncDependentFilters(true);
             applyFilters();
           }
         });
@@ -2139,6 +2168,7 @@
         if (type === "date") {
           loadRowsForSelectedDates();
         } else {
+          syncDependentFilters(true);
           applyFilters();
         }
       });
